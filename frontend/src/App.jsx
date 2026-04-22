@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import reactLogo from './assets/react.svg'
 import viteLogo from './assets/vite.svg'
 import heroImg from './assets/hero.png'
@@ -6,9 +6,19 @@ import './App.css'
 
 function App() {
   const [count, setCount] = useState(0)
+  const [mensaje, setMensaje] = useState("BIENVENIDOS FCG..")
+
+  useEffect(() => {
+  fetch('/api/hola/')
+    .then(res => res.json())
+    .then(data => setMensaje(data.mensaje))
+    .catch(error => console.error(error))
+}, [])
 
   return (
     <>
+      <h1>{mensaje}</h1>
+
       <section id="center">
         <div className="hero">
           <img src={heroImg} className="base" width="170" height="179" alt="" />
