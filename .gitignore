@@ -16,4 +16,5 @@ venv/
 .env
 *.sqlite3
 media/
-staticfiles/git status
+staticfiles/
+
