@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import FormContainer from "../components/FormContainer.jsx";
 import Input from "../components/Input.jsx";
 import Button from "../components/Button.jsx";
+import ThemeToggle from "../components/ThemeToggle.jsx";
 
 export default function Login() {
   const [form, setForm] = useState({ email: "", password: "" });
@@ -31,43 +32,59 @@ export default function Login() {
   };
 
   return (
-    <FormContainer
-      title="Iniciar sesión"
-      footer={
-        <span className="text-gray-600 dark:text-gray-400">
-          ¿No tenés cuenta?{" "}
-          <Link to="/register" className="text-brand font-semibold hover:underline">
-            Registrate
-          </Link>
-        </span>
-      }
-    >
-      <form onSubmit={onSubmit} noValidate className="space-y-4">
-        <Input
-          label="Email"
-          name="email"
-          type="email"
-          placeholder="tu@email.com"
-          value={form.email}
-          onChange={onChange}
-          error={errors.email}
-          autoComplete="email"
-        />
-        <Input
-          label="Contraseña"
-          name="password"
-          isPassword
-          placeholder="••••••••"
-          value={form.password}
-          onChange={onChange}
-          error={errors.password}
-          autoComplete="current-password"
-        />
-        <Button type="submit">Iniciar sesión</Button>
-        {submitted && (
-          <p className="text-sm text-center text-brand">¡Listo! (demo, sin backend)</p>
-        )}
-      </form>
-    </FormContainer>
+    <>
+      {/* BOTÓN MODO OSCURO */}
+      <div className="fixed top-4 right-4">
+        <ThemeToggle />
+      </div>
+
+      {/* FORMULARIO */}
+      <FormContainer
+        title="Iniciar sesión"
+        footer={
+          <span className="text-gray-600 dark:text-gray-400">
+            ¿No tenés cuenta?{" "}
+            <Link
+              to="/register"
+              className="text-brand font-semibold hover:underline"
+            >
+              Registrate
+            </Link>
+          </span>
+        }
+      >
+        <form onSubmit={onSubmit} noValidate className="space-y-4">
+          <Input
+            label="Email"
+            name="email"
+            type="email"
+            placeholder="tu@email.com"
+            value={form.email}
+            onChange={onChange}
+            error={errors.email}
+            autoComplete="email"
+          />
+
+          <Input
+            label="Contraseña"
+            name="password"
+            isPassword
+            placeholder="••••••••"
+            value={form.password}
+            onChange={onChange}
+            error={errors.password}
+            autoComplete="current-password"
+          />
+
+          <Button type="submit">Iniciar sesión</Button>
+
+          {submitted && (
+            <p className="text-sm text-center text-brand">
+              ¡Listo! (demo, sin backend)
+            </p>
+          )}
+        </form>
+      </FormContainer>
+    </>
   );
 }
