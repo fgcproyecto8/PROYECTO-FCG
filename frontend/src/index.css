@@ -2,6 +2,28 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --primary: #22c55e;
+  --secondary: #f1f5f9;
+  --muted: #f1f5f9;
+  --border: #e2e8f0;
+}
+
+.dark {
+  --background: #0f172a;
+  --foreground: #f8fafc;
+  --card: #1e293b;
+  --card-foreground: #f8fafc;
+  --primary: #22c55e;
+  --secondary: #334155;
+  --muted: #334155;
+  --border: #475569;
+}
+
 html,
 body,
 #root {
