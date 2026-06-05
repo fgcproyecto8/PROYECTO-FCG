@@ -1,4 +1,7 @@
 import { ChevronRight } from "lucide-react";
+import { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+
 import Header from "../components/Header.jsx";
 import HeroSection from "../components/HeroSection.jsx";
 import FieldCard from "../components/FieldCard.jsx";
@@ -67,19 +70,42 @@ const matches = [
     name: "Match Principiantes",
     location: "Polideportivo Norte",
     players: 6,
-    capacity: 14,
+    capacity: 10, // 🔥 CORREGIDO
     level: "Principiante",
   },
 ];
 
 export default function Home() {
+  const navigate = useNavigate();
+
+  // 🔒 PROTEGER HOME
+  useEffect(() => {
+    const user = localStorage.getItem("user");
+
+    if (!user) {
+      navigate("/login");
+    }
+  }, []);
+
+  // 👤 OBTENER USUARIO
+  const user = JSON.parse(localStorage.getItem("user"));
+  const username = user?.username || user?.email || "Jugador";
+
   return (
     <div className="min-h-screen bg-white dark:bg-slate-900 pb-24">
       <Header />
 
       <main>
+        {/* 👋 SALUDO */}
+        <div className="px-5 pt-6 max-w-6xl mx-auto">
+          <h1 className="text-xl font-semibold text-slate-900 dark:text-white">
+            Hola, {username} ⚽
+          </h1>
+        </div>
+
         <HeroSection />
 
+        {/* CANCHAS */}
         <section className="mx-auto max-w-6xl px-5 pt-10 sm:px-6">
           <div className="flex items-end justify-between gap-4">
             <div>
@@ -92,7 +118,7 @@ export default function Home() {
               </p>
             </div>
 
-            <button className="inline-flex shrink-0 items-center gap-0.5 text-sm font-semibold text-green-500 transition-all hover:gap-1.5">
+            <button className="inline-flex shrink-0 items-center gap-0.5 text-sm font-semibold text-emerald-500 transition-all hover:gap-1.5">
               Ver todas
               <ChevronRight className="h-4 w-4" />
             </button>
@@ -105,6 +131,7 @@ export default function Home() {
           </div>
         </section>
 
+        {/* PARTIDOS */}
         <section className="mx-auto max-w-6xl px-5 pt-12 sm:px-6">
           <div>
             <h2 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white sm:text-3xl">
