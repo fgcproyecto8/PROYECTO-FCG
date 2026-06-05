@@ -1,11 +1,13 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import FormContainer from "../components/FormContainer.jsx";
 import Input from "../components/Input.jsx";
 import Button from "../components/Button.jsx";
 import ThemeToggle from "../components/ThemeToggle.jsx";
 
 export default function Register() {
+  const navigate = useNavigate(); // 👈 NUEVO
+
   const [form, setForm] = useState({
     username: "",
     email: "",
@@ -18,7 +20,6 @@ export default function Register() {
   });
 
   const [errors, setErrors] = useState({});
-  const [submitted, setSubmitted] = useState(false);
 
   const onChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -60,21 +61,23 @@ export default function Register() {
         status: form.role === "owner" ? "pending" : "approved",
       };
 
+      // 💾 guardar usuario
       localStorage.setItem("user", JSON.stringify(user));
-      setSubmitted(true);
+
+      // 🚀 ir a HOME
+      navigate("/inicio");
     }
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-white dark:bg-slate-900">
-
-      {/* 🌙 BOTÓN MODO OSCURO */}
+      
+      {/* 🌙 MODO OSCURO */}
       <div className="fixed top-4 right-4">
         <ThemeToggle />
       </div>
 
       <div className="w-full max-w-md">
-
         <FormContainer
           title="Registrarse"
           footer={
@@ -134,7 +137,7 @@ export default function Register() {
               error={errors.confirm}
             />
 
-            {/* SELECT ROL */}
+            {/* ROL */}
             <div>
               <label className="block text-sm font-medium mb-1.5">
                 Tipo de usuario
@@ -184,12 +187,6 @@ export default function Register() {
             )}
 
             <Button type="submit">Crear cuenta</Button>
-
-            {submitted && (
-              <p className="text-sm text-center text-brand">
-                ¡Cuenta creada! (demo)
-              </p>
-            )}
           </form>
         </FormContainer>
       </div>
