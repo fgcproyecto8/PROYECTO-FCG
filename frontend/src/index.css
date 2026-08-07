@@ -33,3 +33,6 @@ body,
 body {
   @apply bg-white text-slate-900 dark:bg-slate-900 dark:text-white;
 }
+html {
+  scrollbar-gutter: stable;
+}
