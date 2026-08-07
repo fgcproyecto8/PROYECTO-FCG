@@ -1,6 +1,7 @@
 import { ChevronRight } from "lucide-react";
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 
 import Header from "../components/Header.jsx";
 import HeroSection from "../components/HeroSection.jsx";
@@ -70,7 +71,7 @@ const matches = [
     name: "Match Principiantes",
     location: "Polideportivo Norte",
     players: 6,
-    capacity: 10, // 🔥 CORREGIDO
+    capacity: 10, 
     level: "Principiante",
   },
 ];
@@ -78,7 +79,7 @@ const matches = [
 export default function Home() {
   const navigate = useNavigate();
 
-  // 🔒 PROTEGER HOME
+  
   useEffect(() => {
     const user = localStorage.getItem("user");
 
@@ -87,7 +88,7 @@ export default function Home() {
     }
   }, []);
 
-  // 👤 OBTENER USUARIO
+  
   const user = JSON.parse(localStorage.getItem("user"));
   const username = user?.username || user?.email || "Jugador";
 
@@ -96,7 +97,7 @@ export default function Home() {
       <Header />
 
       <main>
-        {/* 👋 SALUDO */}
+        
         <div className="px-5 pt-6 max-w-6xl mx-auto">
           <h1 className="text-xl font-semibold text-slate-900 dark:text-white">
             Hola, {username} ⚽
@@ -119,7 +120,13 @@ export default function Home() {
             </div>
 
             <button className="inline-flex shrink-0 items-center gap-0.5 text-sm font-semibold text-emerald-500 transition-all hover:gap-1.5">
-              Ver todas
+              <Link
+                to="/canchas"
+                className="flex items-center gap-1 text-emerald-500 font-semibold hover:text-emerald-400 transition"
+                >
+                Ver todas
+              </Link>
+              
               <ChevronRight className="h-4 w-4" />
             </button>
           </div>
