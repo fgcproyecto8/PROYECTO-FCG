@@ -4,6 +4,8 @@ import Register from "./pages/Register";
 import Home from "./pages/Home";
 import Canchas from "./pages/Canchas";
 import CanchaForm from "./pages/CanchaForm";
+import Partidos from "./pages/Partidos";
+
 
 function App() {
   return (
@@ -22,6 +24,10 @@ function App() {
 
       {/* Home */}
       <Route path="/inicio" element={<Home />} />
+
+      <Route path="/partidos" element={<Partidos />} />
+      <Route path="/crear-partido" element={<Partidos />} /> {/* reemplazar por CrearPartido cuando exista */}
+
     </Routes>
   );
 }
