@@ -81,7 +81,7 @@ export default function Profile() {
       className="
         min-h-screen bg-slate-100 text-slate-900
         transition-colors
-        dark:bg-slate-900 dark:text-neutral-100
+        dark:bg-slate-950 dark:text-neutral-100
       "
     >
       <Header />

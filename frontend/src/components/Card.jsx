@@ -11,8 +11,8 @@ export default function Card({ icon: Icon, title, children, className = "" }) {
         p-5
         shadow-sm
         transition-colors
-        dark:border-neutral-800
-        dark:bg-neutral-900/60
+        dark:border-slate-800
+        dark:bg-slate-900
         ${className}
       `}
     >

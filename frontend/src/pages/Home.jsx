@@ -93,7 +93,7 @@ export default function Home() {
   const username = user?.username || user?.email || "Jugador";
 
   return (
-    <div className="min-h-screen bg-white dark:bg-slate-900 pb-24">
+    <div className="min-h-screen bg-white dark:bg-slate-950 pb-24">
       <Header />
 
       <main>

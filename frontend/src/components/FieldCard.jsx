@@ -2,7 +2,7 @@ import { MapPin, Star } from "lucide-react";
 
 export default function FieldCard({ field }) {
   return (
-    <article className="group w-[280px] shrink-0 overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 transition-all hover:-translate-y-1 hover:border-green-500/40 hover:shadow-2xl hover:shadow-green-500/10 sm:w-auto">
+    <article className="group w-[280px] shrink-0 overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 transition-all hover:-translate-y-1 hover:border-green-500/40 hover:shadow-2xl hover:shadow-green-500/10 sm:w-auto">
       <div className="relative h-44 overflow-hidden">
         <img
           src={field.image}
