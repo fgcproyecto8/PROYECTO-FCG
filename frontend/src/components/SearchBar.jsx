@@ -13,16 +13,10 @@ export default function SearchBar({ value, onChange }) {
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="Buscar por zona o nombre..."
-          className="w-full rounded-xl border border-zinc-800 bg-zinc-900/80 py-2.5 pl-9 pr-3 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/40"
+          className="w-full rounded-xl border border-zinc-800 bg-slate-900 py-2.5 pl-9 pr-3 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/40"
         />
       </div>
-      <button
-        type="button"
-        aria-label="Filtros"
-        className="shrink-0 rounded-xl border border-zinc-800 bg-zinc-900/80 p-2.5 text-zinc-300 transition hover:border-emerald-500/50 hover:text-emerald-400"
-      >
-        <SlidersHorizontal size={18} />
-      </button>
+
     </div>
   );
 }

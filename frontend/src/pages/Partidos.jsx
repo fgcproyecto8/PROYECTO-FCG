@@ -88,7 +88,7 @@ export default function Partidos() {
   }, [query]);
 
   return (
-    <div className="min-h-screen bg-white dark:bg-slate-900 pb-24">
+    <div className="min-h-screen bg-white dark:bg-slate-950 pb-24">
       <Header />
 
       <main className="mx-auto w-full max-w-6xl px-4 py-6 pb-28 sm:px-6">

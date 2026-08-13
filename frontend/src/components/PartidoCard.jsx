@@ -22,7 +22,7 @@ export default function MatchCard({ match, variant = "mine", onJoin }) {
   const isLastSpot = spotsLeft === 1;
 
   return (
-    <article className="group overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/70 shadow-lg shadow-black/40 transition duration-300 hover:-translate-y-1 hover:border-emerald-500/40 hover:shadow-emerald-500/10">
+    <article className="group overflow-hidden rounded-2xl border border-zinc-800 bg-slate-900 shadow-lg shadow-black/40 transition duration-300 hover:-translate-y-1 hover:border-emerald-500/40 hover:shadow-emerald-500/10">
       <div className="relative h-36 w-full overflow-hidden">
         <img
           src={image}
