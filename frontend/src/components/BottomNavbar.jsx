@@ -21,7 +21,9 @@ export default function BottomNavbar() {
             className={({ isActive }) => {
               const active =
                 isActive ||
-                (to === "/perfil" && pathname === "/amigos");
+                (to === "/perfil" && pathname.startsWith("/amigos")) ||
+                (to === "/partidos" &&
+                  pathname.startsWith("/crear-partido"));
 
               return `flex flex-1 flex-col items-center gap-1 rounded-xl px-3 py-1.5 transition-colors ${
                 active
@@ -33,7 +35,9 @@ export default function BottomNavbar() {
             {({ isActive }) => {
               const active =
                 isActive ||
-                (to === "/perfil" && pathname === "/amigos");
+                (to === "/perfil" && pathname.startsWith("/amigos")) ||
+                (to === "/partidos" &&
+                  pathname.startsWith("/crear-partido"));
 
               return (
                 <>
