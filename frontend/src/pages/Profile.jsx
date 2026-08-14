@@ -104,12 +104,12 @@ export default function Profile() {
             rounded-3xl border border-slate-200
             bg-white p-4 shadow-sm
             transition-colors
-            dark:border-neutral-800 dark:bg-neutral-900/40
+            dark:border-slate-950 dark:bg-slate-900
             sm:p-6 lg:p-8
           "
         >
           {/* Encabezado interno */}
-          <div className="mb-6 flex items-center justify-between gap-4 border-b border-slate-200 pb-5 dark:border-neutral-800">
+          <div className="mb-6 flex items-center justify-between gap-4 border-b border-slate-200 pb-5 dark:border-slate-950">
             <div>
               <h2 className="text-lg font-bold text-slate-900 dark:text-neutral-100">
                 Perfil de jugador
@@ -160,7 +160,7 @@ export default function Profile() {
                       bg-white px-3 py-2 text-center text-xl
                       font-bold text-slate-900 outline-none
                       transition-colors focus:border-green-500
-                      dark:border-neutral-700 dark:bg-neutral-800/60
+                      dark:border-slate-950 dark:bg-slate-900
                       dark:text-neutral-100
                     "
                   />
@@ -212,7 +212,7 @@ export default function Profile() {
                 className="
                   rounded-xl border border-slate-200
                   bg-slate-50 py-10 text-center
-                  dark:border-neutral-800 dark:bg-neutral-900/70
+                  dark:border-slate-950 dark:bg-slate-900
                 "
               >
                 <p className="text-6xl font-extrabold text-green-500 dark:text-green-400">
@@ -228,7 +228,7 @@ export default function Profile() {
                 className="
                   mt-4 rounded-xl border border-slate-200
                   bg-slate-50 p-5
-                  dark:border-neutral-800 dark:bg-neutral-900/70
+                  dark:border-slate-950 dark:bg-slate-900
                 "
               >
                 <p className="text-sm tracking-widest text-slate-600 dark:text-neutral-300">
@@ -318,7 +318,7 @@ export default function Profile() {
                   border-slate-200 bg-slate-50 p-4
                   text-sm font-medium leading-relaxed text-slate-900
                   outline-none transition-colors
-                  dark:border-neutral-800 dark:bg-neutral-900/70
+                  dark:border-slate-950 dark:bg-slate-900
                   dark:text-neutral-100
                   ${
                     isEditing
@@ -355,7 +355,7 @@ export default function Profile() {
           w-full rounded-xl border border-slate-300
           bg-white py-4 font-semibold text-slate-700
           transition-colors hover:bg-slate-100
-          dark:border-neutral-700 dark:bg-neutral-900/70
+          dark:border-neutral-700 dark:bg-slate-950
           dark:text-neutral-200 dark:hover:bg-neutral-800
         "
       >
