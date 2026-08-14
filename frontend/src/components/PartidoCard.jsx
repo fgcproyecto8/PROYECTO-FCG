@@ -22,7 +22,7 @@ export default function MatchCard({ match, variant = "mine", onJoin }) {
   const isLastSpot = spotsLeft === 1;
 
   return (
-    <article className="group overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/70 shadow-lg shadow-black/40 transition duration-300 hover:-translate-y-1 hover:border-emerald-500/40 hover:shadow-emerald-500/10">
+    <article className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg dark:border-slate-800 dark:bg-slate-900">
       <div className="relative h-36 w-full overflow-hidden">
         <img
           src={image}
@@ -45,7 +45,7 @@ export default function MatchCard({ match, variant = "mine", onJoin }) {
       <div className="space-y-3 p-4">
         <div className="flex items-start justify-between gap-2">
           <div>
-            <h3 className="text-base font-semibold text-zinc-100">{name}</h3>
+            <h3 className="text-base font-semibold text-slate-900 dark:text-white">{name}</h3>
             {fieldName && (
               <p className="text-xs text-zinc-500">{fieldName}</p>
             )}

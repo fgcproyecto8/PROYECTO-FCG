@@ -14,7 +14,7 @@ export default function InfoRow({
         flex items-center gap-3 rounded-xl border
         border-slate-200 bg-slate-50 px-4 py-3
         transition-colors
-        dark:border-neutral-800 dark:bg-neutral-900/70
+        dark:border-slate-950 dark:bg-slate-900
       "
     >
       <Icon

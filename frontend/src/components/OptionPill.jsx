@@ -24,8 +24,8 @@ export default function OptionPill({
     bg-white
     text-slate-700
     hover:border-slate-400
-    dark:border-neutral-700
-    dark:bg-neutral-800/60
+    dark:border-slate-950
+    dark:bg-slate-900
     dark:text-neutral-300
     dark:hover:border-neutral-600
   `;

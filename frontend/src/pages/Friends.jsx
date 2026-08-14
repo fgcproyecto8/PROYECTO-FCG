@@ -227,7 +227,7 @@ export default function Friends() {
       className="
         flex min-h-screen flex-col
         bg-gray-50 text-gray-900
-        dark:bg-slate-900 dark:text-white
+        dark:bg-slate-950 dark:text-white
       "
     >
       <Header />
@@ -336,7 +336,7 @@ export default function Friends() {
                       placeholder:text-gray-400
                       focus:border-green-500
                       dark:border-white/10
-                      dark:bg-white/[0.05]
+                      dark:bg-slate-900
                       dark:text-white
                     "
                   />

@@ -4,7 +4,7 @@ export default function MatchCard({ match }) {
   const full = match.players >= match.capacity;
 
   return (
-    <article className="flex items-center gap-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-3 transition-all hover:border-green-500/40 sm:p-4">
+    <article className="flex items-center gap-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 transition-all hover:border-green-500/40 sm:p-4">
       <div className="flex w-20 shrink-0 flex-col items-center justify-center rounded-xl bg-green-500/15 py-3 ring-1 ring-green-500/30">
         <span className="text-[10px] font-bold uppercase tracking-wider text-green-500">
           {match.day}

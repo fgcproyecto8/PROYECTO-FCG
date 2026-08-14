@@ -28,7 +28,7 @@ export default function UserCard({
         rounded-2xl border border-gray-200
         bg-white p-4 shadow-sm
         transition-colors
-        dark:border-white/10 dark:bg-neutral-900/70
+        dark:border-white/10 dark:bg-slate-900
       "
     >
       {/* Parte superior */}
