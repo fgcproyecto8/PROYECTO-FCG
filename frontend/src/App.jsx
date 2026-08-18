@@ -7,6 +7,8 @@ import Friends from "./pages/Friends";
 import Canchas from "./pages/Canchas";
 import CanchaForm from "./pages/CanchaForm";
 import Partidos from "./pages/Partidos";
+import CrearPartido from "./pages/CrearPartido";
+
 
 function App() {
   return (
@@ -23,7 +25,7 @@ function App() {
 
       {/* Partidos */}
       <Route path="/partidos" element={<Partidos />} />
-      <Route path="/crear-partido" element={<Partidos />} />
+      <Route path="/crear-partido" element={<CrearPartido />} />
 
       {/* Canchas */}
       <Route path="/canchas" element={<Canchas />} />

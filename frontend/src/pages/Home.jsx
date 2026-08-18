@@ -1,7 +1,6 @@
 import { ChevronRight } from "lucide-react";
 import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { Link } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 
 import Header from "../components/Header.jsx";
 import HeroSection from "../components/HeroSection.jsx";
@@ -9,96 +8,76 @@ import FieldCard from "../components/FieldCard.jsx";
 import MatchCard from "../components/MatchCard.jsx";
 import BottomNavbar from "../components/BottomNavbar.jsx";
 
-import field1 from "../assets/field-1.jpg";
-import field2 from "../assets/field-2.jpg";
-import field3 from "../assets/field-3.jpg";
+import {
+  CANCHAS_MOCK,
+  formatPrecio,
+} from "../data/canchas";
 
-const fields = [
-  {
-    id: "1",
-    name: "Estadio Urbano Central",
-    location: "Palermo, 1.2 km",
-    price: "$45/h",
-    rating: 4.9,
-    image: field1,
-    tags: ["Fútbol 5", "Techada"],
-  },
-  {
-    id: "2",
-    name: "Complejo La Bombita",
-    location: "Caballito, 2.4 km",
-    price: "$38/h",
-    rating: 4.7,
-    image: field2,
-    tags: ["Fútbol 5", "Nocturna"],
-  },
-  {
-    id: "3",
-    name: "Polideportivo Norte",
-    location: "Belgrano, 3.1 km",
-    price: "$52/h",
-    rating: 4.8,
-    image: field3,
-    tags: ["Fútbol 7", "Aire libre"],
-  },
-];
-
-const matches = [
-  {
-    id: "1",
-    day: "Hoy",
-    time: "20:30",
-    name: "Pickup Palermo",
-    location: "Estadio Urbano Central",
-    players: 8,
-    capacity: 10,
-    level: "Intermedio",
-  },
-  {
-    id: "2",
-    day: "Hoy",
-    time: "22:00",
-    name: "Clásico de los Viernes",
-    location: "La Bombita",
-    players: 10,
-    capacity: 10,
-    level: "Avanzado",
-  },
-  {
-    id: "3",
-    day: "Mañ",
-    time: "19:00",
-    name: "Match Principiantes",
-    location: "Polideportivo Norte",
-    players: 6,
-    capacity: 10, 
-    level: "Principiante",
-  },
-];
+import {
+  AVAILABLE_MATCHES,
+} from "../data/partidos";
 
 export default function Home() {
   const navigate = useNavigate();
 
-  
   useEffect(() => {
     const user = localStorage.getItem("user");
 
     if (!user) {
       navigate("/login");
     }
-  }, []);
+  }, [navigate]);
 
-  
   const user = JSON.parse(localStorage.getItem("user"));
   const username = user?.username || user?.email || "Jugador";
 
+  /*
+   * Adaptamos las canchas al formato que espera FieldCard.
+   *
+   * Usamos solamente las primeras 3 como "destacadas".
+   */
+  const featuredFields = CANCHAS_MOCK.slice(0, 3).map((cancha) => ({
+    id: cancha.id,
+    name: cancha.nombre,
+    location: cancha.direccion,
+    price: formatPrecio(cancha.precio),
+    image: cancha.imagen,
+
+    /*
+     * Por ahora la información real de cancha
+     * no tiene rating.
+     */
+    rating: null,
+
+    tags: [cancha.tipo],
+  }));
+
+  /*
+   * Adaptamos los partidos al formato que espera MatchCard.
+   */
+  const openMatches = AVAILABLE_MATCHES.slice(0, 3).map((partido) => ({
+    id: partido.id,
+    day: partido.date,
+    time: partido.time,
+    name: partido.name,
+    location: partido.fieldName,
+    players: partido.players,
+    capacity: partido.maxPlayers,
+
+    /*
+     * Actualmente AVAILABLE_MATCHES no tiene
+     * nivel de juego.
+     */
+    level: partido.type,
+  }));
+
   return (
-    <div className="min-h-screen bg-white dark:bg-slate-950 pb-24">
+    <div className="min-h-screen bg-white pb-24 dark:bg-slate-950">
       <Header />
 
       <main>
-        
-        <div className="px-5 pt-6 max-w-6xl mx-auto">
+        {/* Saludo */}
+        <div className="mx-auto max-w-6xl px-5 pt-6">
           <h1 className="text-xl font-semibold text-slate-900 dark:text-white">
             Hola, {username} ⚽
           </h1>
@@ -115,44 +94,57 @@ export default function Home() {
               </h2>
 
               <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                Las mejores instalaciones cerca de ti
+                Algunas de las canchas disponibles
               </p>
             </div>
 
-            <button className="inline-flex shrink-0 items-center gap-0.5 text-sm font-semibold text-emerald-500 transition-all hover:gap-1.5">
-              <Link
-                to="/canchas"
-                className="flex items-center gap-1 text-emerald-500 font-semibold hover:text-emerald-400 transition"
-                >
-                Ver todas
-              </Link>
-              
+            <Link
+              to="/canchas"
+              className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold text-emerald-500 transition hover:text-emerald-400"
+            >
+              Ver todas
               <ChevronRight className="h-4 w-4" />
-            </button>
+            </Link>
           </div>
 
           <div className="mt-5 -mx-5 flex gap-4 overflow-x-auto px-5 pb-2 sm:mx-0 sm:grid sm:grid-cols-3 sm:overflow-visible sm:px-0">
-            {fields.map((f) => (
-              <FieldCard key={f.id} field={f} />
+            {featuredFields.map((field) => (
+              <FieldCard
+                key={field.id}
+                field={field}
+              />
             ))}
           </div>
         </section>
 
         {/* PARTIDOS */}
         <section className="mx-auto max-w-6xl px-5 pt-12 sm:px-6">
-          <div>
-            <h2 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white sm:text-3xl">
-              Partidos Abiertos
-            </h2>
+          <div className="flex items-end justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white sm:text-3xl">
+                Partidos Abiertos
+              </h2>
 
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              Únete a un equipo hoy mismo
-            </p>
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                Unite a un equipo hoy mismo
+              </p>
+            </div>
+
+            <Link
+              to="/partidos"
+              className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold text-emerald-500 transition hover:text-emerald-400"
+            >
+              Ver todos
+              <ChevronRight className="h-4 w-4" />
+            </Link>
           </div>
 
           <div className="mt-5 flex flex-col gap-3">
-            {matches.map((m) => (
-              <MatchCard key={m.id} match={m} />
+            {openMatches.map((match) => (
+              <MatchCard
+                key={match.id}
+                match={match}
+              />
             ))}
           </div>
         </section>
