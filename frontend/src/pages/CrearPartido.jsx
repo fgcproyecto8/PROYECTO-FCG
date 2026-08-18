@@ -2,36 +2,24 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
-  MapPin,
   CalendarDays,
   Search,
-  Pencil,
   SlidersHorizontal,
   Eye,
   EyeOff,
-  Check,
   CirclePlus,
-  AlertCircle,
   LockKeyhole,
 } from "lucide-react";
 
 import Header from "../components/Header";
 import BottomNavbar from "../components/BottomNavbar";
+import Card from "../components/Card";
+import Input from "../components/Input";
+import CanchaSelector from "../components/CanchaSelector";
+import HorarioSelector from "../components/HorarioSelector";
+
 import { CANCHAS_MOCK, formatPrecio } from "../data/canchas";
 import { MY_MATCHES } from "../data/partidos";
-
-const CARD =
-  "rounded-2xl border border-neutral-200 bg-white p-5 sm:p-6 " +
-  "dark:border-neutral-800 dark:bg-neutral-900";
-
-const LABEL =
-  "mb-1.5 block text-[11px] font-bold tracking-wide text-neutral-500 dark:text-neutral-400";
-
-const FIELD =
-  "w-full rounded-xl border border-neutral-200 bg-neutral-50 py-3 pl-11 pr-4 text-sm " +
-  "text-neutral-900 placeholder:text-neutral-400 outline-none transition " +
-  "focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 " +
-  "dark:border-neutral-800 dark:bg-neutral-800/60 dark:text-neutral-100 dark:placeholder:text-neutral-500";
 
 export default function CrearPartido() {
   const navigate = useNavigate();
@@ -205,17 +193,11 @@ export default function CrearPartido() {
       pricePerPlayer: precioPorJugador.toLocaleString("es-AR"),
       totalPrice: Number(cancha.precio).toLocaleString("es-AR"),
 
-      // Información extra para cuando exista backend
       descripcion: form.descripcion.trim(),
       password: esPublico ? null : form.password.trim(),
       canchaId: cancha.id,
     };
 
-    /*
-     * Simulación frontend:
-     * agregamos el partido al array en memoria.
-     * Al recargar la página, desaparece.
-     */
     MY_MATCHES.unshift(nuevoPartido);
 
     console.log("Partido creado (mock):", nuevoPartido);
@@ -227,257 +209,122 @@ export default function CrearPartido() {
     }, 900);
   };
 
-  const Err = ({ children }) =>
-    children ? (
-      <p className="mt-1.5 flex items-center gap-1 text-xs text-red-400">
-        <AlertCircle className="h-3.5 w-3.5" />
-        {children}
-      </p>
-    ) : null;
-
   return (
-    <div className="min-h-screen bg-neutral-50 text-neutral-900 dark:bg-slate-900 dark:text-neutral-100">
+    <div className="min-h-screen bg-white text-slate-900 dark:bg-slate-950 dark:text-white">
       <Header />
 
       <main className="mx-auto w-full max-w-3xl px-4 pb-32 pt-6">
+        {/* Volver */}
         <button
           type="button"
           onClick={() => navigate("/partidos")}
-          className="mb-4 inline-flex items-center gap-2 text-sm text-neutral-500 transition hover:text-emerald-500 dark:text-neutral-400"
+          className="mb-4 inline-flex items-center gap-2 text-sm text-slate-500 transition hover:text-emerald-500 dark:text-slate-400"
         >
           <ArrowLeft className="h-4 w-4" />
           Volver
         </button>
 
+        {/* Título */}
         <h1 className="text-4xl font-extrabold tracking-tight">
           Crear Partido
         </h1>
 
-        <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
           Configurá los detalles y armá tu equipo.
         </p>
 
-        {/* Selección de Cancha */}
-        <section className={`${CARD} mt-6`}>
-          <div>
-            <h2 className="flex items-center gap-2 text-lg font-bold">
-              <CalendarDays className="h-5 w-5 text-emerald-500" />
-              Selección de Cancha
-            </h2>
+        {/* Selección de cancha */}
+        <Card
+          icon={CalendarDays}
+          title="Selección de Cancha"
+          className="mt-6"
+        >
+          <p className="-mt-3 text-sm text-slate-500 dark:text-slate-400">
+            Elegí dónde se jugará el encuentro.
+          </p>
 
-            <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-              Elegí dónde se jugará el encuentro.
+          <CanchaSelector
+            canchas={CANCHAS_MOCK}
+            canchaId={canchaId}
+            onSelect={seleccionarCancha}
+          />
+
+          {errores.cancha && (
+            <p className="mt-2 text-xs text-red-500">
+              {errores.cancha}
             </p>
-          </div>
-
-          {CANCHAS_MOCK.length === 0 ? (
-            <div className="mt-4 rounded-xl border border-dashed border-neutral-300 p-8 text-center dark:border-neutral-700">
-              <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                No hay canchas disponibles.
-              </p>
-            </div>
-          ) : (
-            <div className="mt-4 flex gap-4 overflow-x-auto pb-3">
-              {CANCHAS_MOCK.map((c) => {
-                const activa = c.id === canchaId;
-
-                return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => seleccionarCancha(c)}
-                    className={`relative w-[300px] shrink-0 overflow-hidden rounded-xl border text-left transition sm:w-[315px] ${
-                      activa
-                        ? "border-emerald-500 ring-1 ring-emerald-500/60"
-                        : "border-neutral-200 hover:border-emerald-500/50 dark:border-neutral-800"
-                    }`}
-                  >
-                    {activa && (
-                      <span className="absolute right-3 top-3 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500 text-neutral-950">
-                        <Check className="h-4 w-4" strokeWidth={3} />
-                      </span>
-                    )}
-
-                    <div className="relative h-36 w-full">
-                      <img
-                        src={c.imagen}
-                        alt={c.nombre}
-                        loading="lazy"
-                        className="h-full w-full object-cover brightness-[.55]"
-                      />
-
-                      <span className="absolute bottom-2 left-3 rounded-md border border-emerald-500/60 bg-neutral-950/70 px-2 py-1 text-[11px] font-bold text-emerald-400">
-                        {c.tipo}
-                      </span>
-                    </div>
-
-                    <div className="p-3">
-                      <h3 className="text-base font-bold">
-                        {c.nombre}
-                      </h3>
-
-                      <p className="mt-1 flex items-center gap-1 text-sm text-neutral-500 dark:text-neutral-400">
-                        <MapPin className="h-3.5 w-3.5 shrink-0" />
-                        {c.direccion}
-                      </p>
-
-                      <div className="mt-3 flex items-center justify-between gap-3 border-t border-neutral-200/70 pt-3 dark:border-neutral-800">
-                        <span className="text-sm text-neutral-500 dark:text-neutral-400">
-                          {c.horarios?.hoy?.length > 0
-                            ? `${c.horarios.hoy.length} horarios hoy`
-                            : "Sin horarios hoy"}
-                        </span>
-
-                        <span className="shrink-0 text-base font-extrabold text-emerald-500">
-                          {formatPrecio(c.precio)}
-                        </span>
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
           )}
-
-          <Err>{errores.cancha}</Err>
-        </section>
+        </Card>
 
         {/* Detalles */}
-        <section className={`${CARD} mt-5`}>
-          <h2 className="flex items-center gap-2 text-lg font-bold">
-            <SlidersHorizontal className="h-5 w-5 text-emerald-500" />
-            Detalles del Partido
-          </h2>
-
-          <div className="mt-4 space-y-5">
-            <div>
-              <label className={LABEL}>
-                Nombre del partido
-              </label>
-
-              <div className="relative">
-                <Pencil className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
-
-                <input
-                  type="text"
-                  value={form.nombre}
-                  onChange={(e) =>
-                    setCampo("nombre", e.target.value)
-                  }
-                  placeholder="Ej: Fulbito de Jueves"
-                  className={FIELD}
-                />
-              </div>
-
-              <Err>{errores.nombre}</Err>
-            </div>
+        <Card
+          icon={SlidersHorizontal}
+          title="Detalles del Partido"
+          className="mt-5"
+        >
+          <div className="space-y-5">
+            <Input
+              label="Nombre del partido"
+              value={form.nombre}
+              onChange={(e) =>
+                setCampo("nombre", e.target.value)
+              }
+              placeholder="Ej: Fulbito de Jueves"
+              error={errores.nombre}
+            />
 
             {/* Horarios */}
             <div>
-              <label className={LABEL}>
+              <p className="mb-3 text-sm font-medium text-slate-700 dark:text-slate-300">
                 Horarios disponibles
-              </label>
+              </p>
 
               {!cancha ? (
-                <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                <p className="text-sm text-slate-500 dark:text-slate-400">
                   Primero seleccioná una cancha.
                 </p>
               ) : (
-                <div className="space-y-5">
-                  <div>
-                    <p className="mb-2 text-xs font-bold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
-                      Hoy
-                    </p>
+                <>
+                  <HorarioSelector
+                    titulo="HOY"
+                    dia="hoy"
+                    horarios={cancha.horarios?.hoy || []}
+                    seleccionado={horarioSeleccionado}
+                    onSelect={seleccionarHorario}
+                  />
 
-                    <div className="flex flex-wrap gap-2">
-                      {cancha.horarios?.hoy?.length > 0 ? (
-                        cancha.horarios.hoy.map((hora) => {
-                          const seleccionado =
-                            horarioSeleccionado?.dia === "hoy" &&
-                            horarioSeleccionado?.hora === hora;
-
-                          return (
-                            <button
-                              key={`hoy-${hora}`}
-                              type="button"
-                              onClick={() =>
-                                seleccionarHorario("hoy", hora)
-                              }
-                              className={`rounded-lg border px-4 py-2 text-sm font-semibold transition ${
-                                seleccionado
-                                  ? "border-emerald-500 bg-emerald-500/15 text-emerald-500"
-                                  : "border-neutral-200 bg-neutral-50 text-neutral-600 hover:border-emerald-500/50 dark:border-neutral-700 dark:bg-neutral-800/60 dark:text-neutral-300"
-                              }`}
-                            >
-                              {hora}
-                            </button>
-                          );
-                        })
-                      ) : (
-                        <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                          No hay horarios disponibles hoy.
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div>
-                    <p className="mb-2 text-xs font-bold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
-                      Mañana
-                    </p>
-
-                    <div className="flex flex-wrap gap-2">
-                      {cancha.horarios?.manana?.length > 0 ? (
-                        cancha.horarios.manana.map((hora) => {
-                          const seleccionado =
-                            horarioSeleccionado?.dia === "manana" &&
-                            horarioSeleccionado?.hora === hora;
-
-                          return (
-                            <button
-                              key={`manana-${hora}`}
-                              type="button"
-                              onClick={() =>
-                                seleccionarHorario("manana", hora)
-                              }
-                              className={`rounded-lg border px-4 py-2 text-sm font-semibold transition ${
-                                seleccionado
-                                  ? "border-emerald-500 bg-emerald-500/15 text-emerald-500"
-                                  : "border-neutral-200 bg-neutral-50 text-neutral-600 hover:border-emerald-500/50 dark:border-neutral-700 dark:bg-neutral-800/60 dark:text-neutral-300"
-                              }`}
-                            >
-                              {hora}
-                            </button>
-                          );
-                        })
-                      ) : (
-                        <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                          No hay horarios disponibles mañana.
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                  <HorarioSelector
+                    titulo="MAÑANA"
+                    dia="manana"
+                    horarios={cancha.horarios?.manana || []}
+                    seleccionado={horarioSeleccionado}
+                    onSelect={seleccionarHorario}
+                  />
+                </>
               )}
 
-              <Err>{errores.horario}</Err>
+              {errores.horario && (
+                <p className="mt-2 text-xs text-red-500">
+                  {errores.horario}
+                </p>
+              )}
             </div>
 
             {/* Ubicación */}
             <div>
-              <label className={LABEL}>
+              <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
                 Ubicación
               </label>
 
               <div className="relative">
-                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
 
                 <input
                   type="text"
                   readOnly
                   value={cancha?.direccion || ""}
                   placeholder="Seleccioná una cancha"
-                  className={`${FIELD} cursor-default`}
+                  className="h-11 w-full cursor-default rounded-lg border border-gray-300 bg-white pl-10 pr-3 text-sm text-gray-900 outline-none dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
                 />
               </div>
             </div>
@@ -485,21 +332,21 @@ export default function CrearPartido() {
             {/* Tipo / Precio */}
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <label className={LABEL}>
+                <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
                   Tipo de partido
                 </label>
 
-                <div className="flex h-[46px] items-center justify-center rounded-xl border border-emerald-500 bg-transparent text-sm font-bold text-emerald-500">
+                <div className="flex h-11 items-center justify-center rounded-lg border border-emerald-500 text-sm font-bold text-emerald-500">
                   {getModalidad(cancha)}
                 </div>
               </div>
 
               <div>
-                <label className={LABEL}>
+                <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
                   Precio
                 </label>
 
-                <div className="flex h-[46px] items-center rounded-xl border border-neutral-200 bg-neutral-50 px-4 text-sm dark:border-neutral-800 dark:bg-neutral-800/60">
+                <div className="flex h-11 items-center rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100">
                   {cancha
                     ? formatPrecio(cancha.precio)
                     : "—"}
@@ -509,7 +356,7 @@ export default function CrearPartido() {
 
             {/* Descripción */}
             <div>
-              <label className={LABEL}>
+              <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
                 Descripción (Opcional)
               </label>
 
@@ -520,21 +367,21 @@ export default function CrearPartido() {
                   setCampo("descripcion", e.target.value)
                 }
                 placeholder="Aclaraciones para los jugadores..."
-                className={`${FIELD} resize-none pl-4`}
+                className="w-full resize-none rounded-lg border border-gray-300 bg-white px-3 py-3 text-sm text-gray-900 placeholder-gray-400 outline-none transition focus:border-emerald-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-gray-500"
               />
             </div>
           </div>
-        </section>
+        </Card>
 
         {/* Público / Privado */}
-        <section className={`${CARD} mt-5`}>
+        <Card className="mt-5">
           <div className="flex items-center justify-between gap-4">
             <div>
               <h3 className="flex items-center gap-2 text-lg font-bold">
                 {esPublico ? (
                   <Eye className="h-5 w-5 text-emerald-500" />
                 ) : (
-                  <EyeOff className="h-5 w-5 text-neutral-400" />
+                  <EyeOff className="h-5 w-5 text-slate-400" />
                 )}
 
                 {esPublico
@@ -542,7 +389,7 @@ export default function CrearPartido() {
                   : "Partido Privado"}
               </h3>
 
-              <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                 {esPublico
                   ? "Cualquier usuario de PartidoYa podrá ver y unirse a este partido."
                   : "Los jugadores necesitarán una contraseña para poder unirse."}
@@ -557,7 +404,7 @@ export default function CrearPartido() {
               className={`relative h-7 w-12 shrink-0 rounded-full transition ${
                 esPublico
                   ? "bg-emerald-500"
-                  : "bg-neutral-300 dark:bg-neutral-700"
+                  : "bg-slate-300 dark:bg-slate-700"
               }`}
             >
               <span
@@ -569,44 +416,39 @@ export default function CrearPartido() {
           </div>
 
           {!esPublico && (
-            <div className="mt-5 border-t border-neutral-200 pt-5 dark:border-neutral-800">
-              <label className={LABEL}>
-                Contraseña del partido
-              </label>
-
+            <div className="mt-5 border-t border-slate-200 pt-5 dark:border-slate-800">
               <div className="relative">
-                <LockKeyhole className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+                <LockKeyhole className="pointer-events-none absolute left-3 top-[38px] z-10 h-4 w-4 text-slate-400" />
 
-                <input
-                  type="password"
+                <Input
+                  label="Contraseña del partido"
+                  isPassword
                   value={form.password}
                   onChange={(e) =>
                     setCampo("password", e.target.value)
                   }
                   placeholder="Creá una contraseña"
-                  className={FIELD}
+                  error={errores.password}
+                  className="pl-10"
                 />
               </div>
 
-              <Err>{errores.password}</Err>
-
-              <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">
+              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
                 Compartí esta contraseña únicamente con los jugadores que
                 quieras invitar.
               </p>
             </div>
           )}
-        </section>
+        </Card>
 
         {/* Resumen */}
-        <section className={`${CARD} mt-5`}>
-          <h2 className="text-base font-bold">
-            Resumen
-          </h2>
-
-          <dl className="mt-4 text-sm">
+        <Card
+          title="Resumen"
+          className="mt-5"
+        >
+          <dl className="text-sm">
             <div className="flex items-center justify-between gap-4 py-1.5">
-              <dt className="text-neutral-500 dark:text-neutral-400">
+              <dt className="text-slate-500 dark:text-slate-400">
                 Cancha
               </dt>
 
@@ -616,7 +458,7 @@ export default function CrearPartido() {
             </div>
 
             <div className="flex items-center justify-between gap-4 py-1.5">
-              <dt className="text-neutral-500 dark:text-neutral-400">
+              <dt className="text-slate-500 dark:text-slate-400">
                 Horario
               </dt>
 
@@ -632,7 +474,7 @@ export default function CrearPartido() {
             </div>
 
             <div className="flex items-center justify-between gap-4 py-1.5">
-              <dt className="text-neutral-500 dark:text-neutral-400">
+              <dt className="text-slate-500 dark:text-slate-400">
                 Modalidad
               </dt>
 
@@ -648,17 +490,17 @@ export default function CrearPartido() {
             </div>
 
             <div className="flex items-center justify-between gap-4 py-1.5">
-              <dt className="text-neutral-500 dark:text-neutral-400">
+              <dt className="text-slate-500 dark:text-slate-400">
                 Privacidad
               </dt>
 
-              <dd className="text-right font-medium">
+              <dd className="font-medium">
                 {esPublico ? "Público" : "Privado"}
               </dd>
             </div>
 
-            <div className="mt-2 flex items-center justify-between gap-4 border-t border-neutral-200 pt-3 dark:border-neutral-800">
-              <dt className="text-neutral-500 dark:text-neutral-400">
+            <div className="mt-2 flex items-center justify-between gap-4 border-t border-slate-200 pt-3 dark:border-slate-800">
+              <dt className="text-slate-500 dark:text-slate-400">
                 Total estimado
               </dt>
 
@@ -679,12 +521,12 @@ export default function CrearPartido() {
           <button
             type="button"
             onClick={handleCreateMatch}
-            className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-full bg-emerald-500 px-6 py-4 text-base font-bold text-neutral-950 transition hover:bg-emerald-400 active:scale-[0.99]"
+            className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-full bg-emerald-500 px-6 py-4 text-base font-bold text-slate-950 transition hover:bg-emerald-400"
           >
             <CirclePlus className="h-5 w-5" />
             Crear Partido
           </button>
-        </section>
+        </Card>
       </main>
 
       <BottomNavbar />

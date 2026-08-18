@@ -43,7 +43,7 @@ export default function HeroSection() {
 
           <div className="mt-7">
             <button
-              onClick={() => navigate("/partidos")}
+              onClick={() => navigate("/crear-partido")}
               className="group inline-flex items-center gap-2.5 rounded-2xl bg-green-500 px-6 py-4 text-base font-bold text-white shadow-[0_10px_40px_-10px] shadow-green-500/60 transition-all hover:scale-[1.02] active:scale-100"
             >
               <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/15">
