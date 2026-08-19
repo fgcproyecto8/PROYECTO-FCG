@@ -217,7 +217,7 @@ export default function CrearPartido() {
         {/* Volver */}
         <button
           type="button"
-          onClick={() => navigate("/partidos")}
+          onClick={() => navigate(-1)}
           className="mb-4 inline-flex items-center gap-2 text-sm text-slate-500 transition hover:text-emerald-500 dark:text-slate-400"
         >
           <ArrowLeft className="h-4 w-4" />

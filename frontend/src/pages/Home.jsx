@@ -1,5 +1,5 @@
 import { ChevronRight } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 
 import Header from "../components/Header.jsx";
@@ -7,6 +7,7 @@ import HeroSection from "../components/HeroSection.jsx";
 import FieldCard from "../components/FieldCard.jsx";
 import MatchCard from "../components/MatchCard.jsx";
 import BottomNavbar from "../components/BottomNavbar.jsx";
+import JoinPrivateMatchModal from "../components/JoinPrivateMatchModal.jsx";
 
 import {
   CANCHAS_MOCK,
@@ -14,11 +15,18 @@ import {
 } from "../data/canchas";
 
 import {
+  MY_MATCHES,
   AVAILABLE_MATCHES,
 } from "../data/partidos";
 
 export default function Home() {
   const navigate = useNavigate();
+
+  const [joinedMatches, setJoinedMatches] = useState(() =>
+    MY_MATCHES.map((partido) => partido.id)
+  );
+
+  const [partidoPrivado, setPartidoPrivado] = useState(null);
 
   useEffect(() => {
     const user = localStorage.getItem("user");
@@ -31,10 +39,71 @@ export default function Home() {
   const user = JSON.parse(localStorage.getItem("user"));
   const username = user?.username || user?.email || "Jugador";
 
+  const agregarAMisPartidos = (partido) => {
+    if (partido.players >= partido.maxPlayers) {
+      return;
+    }
+
+    const yaEstaEnMisPartidos = MY_MATCHES.some(
+      (item) => item.id === partido.id
+    );
+
+    if (yaEstaEnMisPartidos) {
+      return;
+    }
+
+    partido.players += 1;
+
+    MY_MATCHES.unshift({
+      ...partido,
+      status: "Confirmado",
+    });
+
+    setJoinedMatches((prev) =>
+      prev.includes(partido.id)
+        ? prev
+        : [...prev, partido.id]
+    );
+  };
+
+  const handleJoinMatch = (match) => {
+    const partidoOriginal = AVAILABLE_MATCHES.find(
+      (partido) => partido.id === match.id
+    );
+
+    if (!partidoOriginal) {
+      return;
+    }
+
+    const esPrivado =
+      partidoOriginal.type?.trim().toLowerCase() === "privado";
+
+    if (esPrivado) {
+      setPartidoPrivado(partidoOriginal);
+      return;
+    }
+
+    agregarAMisPartidos(partidoOriginal);
+  };
+
+  const handleConfirmPrivate = (passwordIngresada) => {
+    if (!partidoPrivado) {
+      return false;
+    }
+
+    if (passwordIngresada !== partidoPrivado.password) {
+      return false;
+    }
+
+    agregarAMisPartidos(partidoPrivado);
+
+    setPartidoPrivado(null);
+
+    return true;
+  };
+
   /*
    * Adaptamos las canchas al formato que espera FieldCard.
-   *
-   * Usamos solamente las primeras 3 como "destacadas".
    */
   const featuredFields = CANCHAS_MOCK.slice(0, 3).map((cancha) => ({
     id: cancha.id,
@@ -42,13 +111,7 @@ export default function Home() {
     location: cancha.direccion,
     price: formatPrecio(cancha.precio),
     image: cancha.imagen,
-
-    /*
-     * Por ahora la información real de cancha
-     * no tiene rating.
-     */
     rating: null,
-
     tags: [cancha.tipo],
   }));
 
@@ -63,16 +126,11 @@ export default function Home() {
     location: partido.fieldName,
     players: partido.players,
     capacity: partido.maxPlayers,
-
-    /*
-     * Actualmente AVAILABLE_MATCHES no tiene
-     * nivel de juego.
-     */
     level: partido.type,
   }));
 
   return (
-    <div className="min-h-screen bg-white pb-24 dark:bg-slate-950">
+    <div className="min-h-screen bg-white pb-24 dark:bg-slate-900">
       <Header />
 
       <main>
@@ -144,11 +202,22 @@ export default function Home() {
               <MatchCard
                 key={match.id}
                 match={match}
+                onJoin={handleJoinMatch}
+                joined={joinedMatches.includes(match.id)}
               />
             ))}
           </div>
         </section>
       </main>
+
+      {/* Modal para partido privado */}
+      {partidoPrivado && (
+        <JoinPrivateMatchModal
+          match={partidoPrivado}
+          onClose={() => setPartidoPrivado(null)}
+          onConfirm={handleConfirmPrivate}
+        />
+      )}
 
       <BottomNavbar />
     </div>

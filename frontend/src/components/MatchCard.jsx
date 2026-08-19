@@ -1,10 +1,14 @@
-import { MapPin, Users } from "lucide-react";
+import { MapPin, Users, Check } from "lucide-react";
 
-export default function MatchCard({ match }) {
+export default function MatchCard({
+  match,
+  onJoin,
+  joined = false,
+}) {
   const full = match.players >= match.capacity;
 
   return (
-    <article className="flex items-center gap-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 transition-all hover:border-green-500/40 sm:p-4">
+    <article className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-3 transition-all hover:border-green-500/40 dark:border-slate-700 dark:bg-slate-950 sm:p-4">
       <div className="flex w-20 shrink-0 flex-col items-center justify-center rounded-xl bg-green-500/15 py-3 ring-1 ring-green-500/30">
         <span className="text-[10px] font-bold uppercase tracking-wider text-green-500">
           {match.day}
@@ -31,21 +35,34 @@ export default function MatchCard({ match }) {
             {match.players}/{match.capacity} jugadores
           </span>
 
-          <span className="rounded-full bg-slate-100 dark:bg-slate-700 px-2 py-0.5 text-[10px] font-semibold text-slate-700 dark:text-slate-200">
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700 dark:bg-slate-700 dark:text-slate-200">
             {match.level}
           </span>
         </div>
       </div>
 
       <button
-        disabled={full}
+        type="button"
+        disabled={full || joined}
+        onClick={() => onJoin?.(match)}
         className={
-          full
-            ? "shrink-0 cursor-not-allowed rounded-xl bg-slate-200 dark:bg-slate-700 px-4 py-2.5 text-xs font-bold text-slate-500 dark:text-slate-400 sm:text-sm"
-            : "shrink-0 rounded-xl bg-green-500 px-4 py-2.5 text-xs font-bold text-white shadow-lg shadow-green-500/30 transition-all hover:scale-105 sm:px-5 sm:text-sm"
+          joined
+            ? "inline-flex shrink-0 cursor-default items-center gap-1 rounded-xl bg-green-500/15 px-4 py-2.5 text-xs font-bold text-green-500 sm:px-5 sm:text-sm"
+            : full
+              ? "shrink-0 cursor-not-allowed rounded-xl bg-slate-200 px-4 py-2.5 text-xs font-bold text-slate-500 dark:bg-slate-700 dark:text-slate-400 sm:text-sm"
+              : "shrink-0 rounded-xl bg-green-500 px-4 py-2.5 text-xs font-bold text-white shadow-lg shadow-green-500/30 transition-all hover:scale-105 sm:px-5 sm:text-sm"
         }
       >
-        {full ? "Lleno" : "Unirse"}
+        {joined ? (
+          <>
+            <Check size={16} />
+            Unido
+          </>
+        ) : full ? (
+          "Lleno"
+        ) : (
+          "Unirse"
+        )}
       </button>
     </article>
   );

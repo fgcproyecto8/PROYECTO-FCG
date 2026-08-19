@@ -56,7 +56,7 @@ export const AVAILABLE_MATCHES = [
       "https://images.unsplash.com/photo-1487466365202-1afdb86c764e?auto=format&fit=crop&w=800&q=60",
     name: "Canchas Norte - F11",
     fieldName: "Canchas Norte",
-    type: "Público",
+    type: "Privado",
     status: "Pendiente",
     date: "Sábado",
     time: "10:00",
@@ -65,5 +65,6 @@ export const AVAILABLE_MATCHES = [
     maxPlayers: 10,
     pricePerPlayer: "4.500",
     totalPrice: "99.000",
+    password: "1234",
   },
 ];

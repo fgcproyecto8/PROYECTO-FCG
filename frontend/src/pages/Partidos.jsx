@@ -7,6 +7,7 @@ import BottomNavbar from "../components/BottomNavbar";
 import PartidoCard from "../components/PartidoCard";
 import SearchBar from "../components/SearchBar";
 import SectionTitle from "../components/SectionTitle";
+import JoinPrivateMatchModal from "../components/JoinPrivateMatchModal";
 
 import {
   MY_MATCHES,
@@ -15,21 +16,92 @@ import {
 
 export default function Partidos() {
   const navigate = useNavigate();
+
   const [query, setQuery] = useState("");
+  const [partidoPrivado, setPartidoPrivado] = useState(null);
+
+  const [, forceUpdate] = useState(0);
+
+  const agregarAMisPartidos = (match) => {
+    const yaEstaEnMisPartidos = MY_MATCHES.some(
+      (partido) => partido.id === match.id
+    );
+
+    if (yaEstaEnMisPartidos) {
+      return;
+    }
+
+    const partidoOriginal = AVAILABLE_MATCHES.find(
+      (partido) => partido.id === match.id
+    );
+
+    if (partidoOriginal) {
+      partidoOriginal.players += 1;
+    }
+
+    const partidoUnido = {
+      ...match,
+      players: partidoOriginal
+        ? partidoOriginal.players
+        : match.players + 1,
+    };
+
+    MY_MATCHES.unshift(partidoUnido);
+
+    forceUpdate((prev) => prev + 1);
+  };
+
+  const handleJoin = (match) => {
+    const esPrivado =
+      match.type?.trim().toLowerCase() === "privado";
+
+    if (esPrivado) {
+      setPartidoPrivado(match);
+      return;
+    }
+
+    agregarAMisPartidos(match);
+  };
+
+  const handleConfirmPrivate = (passwordIngresada) => {
+    if (!partidoPrivado) {
+      return false;
+    }
+
+    if (passwordIngresada !== partidoPrivado.password) {
+      return false;
+    }
+
+    agregarAMisPartidos(partidoPrivado);
+
+    setPartidoPrivado(null);
+
+    return true;
+  };
+
+  const partidosDisponibles = useMemo(() => {
+    const idsMisPartidos = new Set(
+      MY_MATCHES.map((partido) => partido.id)
+    );
+
+    return AVAILABLE_MATCHES.filter(
+      (partido) => !idsMisPartidos.has(partido.id)
+    );
+  }, [MY_MATCHES.length]);
 
   const filteredMatches = useMemo(() => {
     const term = query.trim().toLowerCase();
 
     if (!term) {
-      return AVAILABLE_MATCHES;
+      return partidosDisponibles;
     }
 
-    return AVAILABLE_MATCHES.filter(
+    return partidosDisponibles.filter(
       (match) =>
         match.name.toLowerCase().includes(term) ||
         match.address.toLowerCase().includes(term)
     );
-  }, [query]);
+  }, [query, partidosDisponibles]);
 
   return (
     <div className="min-h-screen bg-white pb-24 dark:bg-slate-950">
@@ -63,7 +135,6 @@ export default function Partidos() {
           <SectionTitle
             icon={CalendarCheck}
             title="Mis Partidos"
-            actionLabel="Ver todos"
             onAction={() => navigate("/partidos")}
           />
 
@@ -108,18 +179,30 @@ export default function Partidos() {
                   key={match.id}
                   match={match}
                   variant="available"
+                  onJoin={handleJoin}
                 />
               ))}
             </div>
           ) : (
             <div className="rounded-2xl border border-dashed border-zinc-800 bg-zinc-900/40 p-8 text-center">
               <p className="text-sm text-zinc-400">
-                No encontramos partidos para “{query}”.
+                {query
+                  ? `No encontramos partidos para “${query}”.`
+                  : "No hay partidos disponibles."}
               </p>
             </div>
           )}
         </section>
       </main>
+
+      {/* Modal para partidos privados */}
+      {partidoPrivado && (
+        <JoinPrivateMatchModal
+          match={partidoPrivado}
+          onClose={() => setPartidoPrivado(null)}
+          onConfirm={handleConfirmPrivate}
+        />
+      )}
 
       <BottomNavbar />
     </div>

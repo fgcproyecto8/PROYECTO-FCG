@@ -316,7 +316,7 @@ export default function CanchaForm() {
 
         <button
           type="button"
-          onClick={() => navigate("/canchas")}
+          onClick={() => navigate(-1)}
           className="mt-3 w-full rounded-lg border border-slate-300 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
         >
           {puedeEditar ? "Cancelar" : "Volver"}
