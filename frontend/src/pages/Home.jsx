@@ -8,6 +8,7 @@ import FieldCard from "../components/FieldCard.jsx";
 import MatchCard from "../components/MatchCard.jsx";
 import BottomNavbar from "../components/BottomNavbar.jsx";
 import JoinPrivateMatchModal from "../components/JoinPrivateMatchModal.jsx";
+import LeaveMatchModal from "../components/LeaveMatchModal.jsx";
 
 import {
   CANCHAS_MOCK,
@@ -27,6 +28,7 @@ export default function Home() {
   );
 
   const [partidoPrivado, setPartidoPrivado] = useState(null);
+  const [partidoAAbandonar, setPartidoAAbandonar] = useState(null);
 
   useEffect(() => {
     const user = localStorage.getItem("user");
@@ -38,6 +40,44 @@ export default function Home() {
 
   const user = JSON.parse(localStorage.getItem("user"));
   const username = user?.username || user?.email || "Jugador";
+
+  const liberarHorario = (partido) => {
+    if (!partido.canchaId) {
+      return;
+    }
+
+    const cancha = CANCHAS_MOCK.find(
+      (item) => item.id === partido.canchaId
+    );
+
+    if (!cancha) {
+      return;
+    }
+
+    let dia = partido.dayKey;
+
+    if (!dia) {
+      if (partido.date === "Hoy") {
+        dia = "hoy";
+      }
+
+      if (partido.date === "Mañana") {
+        dia = "manana";
+      }
+    }
+
+    if (!dia || !cancha.horarios?.[dia]) {
+      return;
+    }
+
+    if (!cancha.horarios[dia].includes(partido.time)) {
+      cancha.horarios[dia].push(partido.time);
+
+      cancha.horarios[dia].sort((a, b) =>
+        a.localeCompare(b)
+      );
+    }
+  };
 
   const agregarAMisPartidos = (partido) => {
     if (partido.players >= partido.maxPlayers) {
@@ -76,7 +116,8 @@ export default function Home() {
     }
 
     const esPrivado =
-      partidoOriginal.type?.trim().toLowerCase() === "privado";
+      partidoOriginal.type?.trim().toLowerCase() ===
+      "privado";
 
     if (esPrivado) {
       setPartidoPrivado(partidoOriginal);
@@ -102,32 +143,115 @@ export default function Home() {
     return true;
   };
 
-  /*
-   * Adaptamos las canchas al formato que espera FieldCard.
-   */
-  const featuredFields = CANCHAS_MOCK.slice(0, 3).map((cancha) => ({
-    id: cancha.id,
-    name: cancha.nombre,
-    location: cancha.direccion,
-    price: formatPrecio(cancha.precio),
-    image: cancha.imagen,
-    rating: null,
-    tags: [cancha.tipo],
-  }));
+  const handleLeaveMatch = (match) => {
+    const partido = MY_MATCHES.find(
+      (item) => item.id === match.id
+    );
 
-  /*
-   * Adaptamos los partidos al formato que espera MatchCard.
-   */
-  const openMatches = AVAILABLE_MATCHES.slice(0, 3).map((partido) => ({
-    id: partido.id,
-    day: partido.date,
-    time: partido.time,
-    name: partido.name,
-    location: partido.fieldName,
-    players: partido.players,
-    capacity: partido.maxPlayers,
-    level: partido.type,
-  }));
+    if (!partido) {
+      return;
+    }
+
+    setPartidoAAbandonar(partido);
+  };
+
+  const handleConfirmLeave = () => {
+    if (!partidoAAbandonar) {
+      return;
+    }
+
+    const indiceMisPartidos = MY_MATCHES.findIndex(
+      (partido) =>
+        partido.id === partidoAAbandonar.id
+    );
+
+    if (indiceMisPartidos === -1) {
+      return;
+    }
+
+    const [partidoEliminado] = MY_MATCHES.splice(
+      indiceMisPartidos,
+      1
+    );
+
+    const indiceDisponible = AVAILABLE_MATCHES.findIndex(
+      (partido) => partido.id === partidoEliminado.id
+    );
+
+    /*
+     * El partido ya estaba disponible para otros usuarios.
+     */
+    if (indiceDisponible !== -1) {
+      AVAILABLE_MATCHES[indiceDisponible].players = Math.max(
+        AVAILABLE_MATCHES[indiceDisponible].players - 1,
+        0
+      );
+
+      /*
+       * Si no queda nadie, el partido desaparece.
+       */
+      if (
+        AVAILABLE_MATCHES[indiceDisponible].players === 0
+      ) {
+        const [partidoBorrado] = AVAILABLE_MATCHES.splice(
+          indiceDisponible,
+          1
+        );
+
+        liberarHorario(partidoBorrado);
+      }
+    } else {
+      /*
+       * Partido que solamente estaba en MY_MATCHES.
+       */
+      const jugadoresRestantes = Math.max(
+        partidoEliminado.players - 1,
+        0
+      );
+
+      if (jugadoresRestantes > 0) {
+        AVAILABLE_MATCHES.unshift({
+          ...partidoEliminado,
+          players: jugadoresRestantes,
+        });
+      } else {
+        liberarHorario(partidoEliminado);
+      }
+    }
+
+    setJoinedMatches((prev) =>
+      prev.filter(
+        (id) => id !== partidoEliminado.id
+      )
+    );
+
+    setPartidoAAbandonar(null);
+  };
+
+  const featuredFields = CANCHAS_MOCK.slice(0, 3).map(
+    (cancha) => ({
+      id: cancha.id,
+      name: cancha.nombre,
+      location: cancha.direccion,
+      price: formatPrecio(cancha.precio),
+      image: cancha.imagen,
+      rating: null,
+      tags: [cancha.tipo],
+    })
+  );
+
+  const openMatches = AVAILABLE_MATCHES.slice(0, 3).map(
+    (partido) => ({
+      id: partido.id,
+      day: partido.date,
+      time: partido.time,
+      name: partido.name,
+      location: partido.fieldName,
+      players: partido.players,
+      capacity: partido.maxPlayers,
+      level: partido.type,
+    })
+  );
 
   return (
     <div className="min-h-screen bg-white pb-24 dark:bg-slate-900">
@@ -203,6 +327,7 @@ export default function Home() {
                 key={match.id}
                 match={match}
                 onJoin={handleJoinMatch}
+                onLeave={handleLeaveMatch}
                 joined={joinedMatches.includes(match.id)}
               />
             ))}
@@ -210,12 +335,19 @@ export default function Home() {
         </section>
       </main>
 
-      {/* Modal para partido privado */}
       {partidoPrivado && (
         <JoinPrivateMatchModal
           match={partidoPrivado}
           onClose={() => setPartidoPrivado(null)}
           onConfirm={handleConfirmPrivate}
+        />
+      )}
+
+      {partidoAAbandonar && (
+        <LeaveMatchModal
+          match={partidoAAbandonar}
+          onClose={() => setPartidoAAbandonar(null)}
+          onConfirm={handleConfirmLeave}
         />
       )}
 

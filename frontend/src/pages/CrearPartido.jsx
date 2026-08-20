@@ -18,8 +18,15 @@ import Input from "../components/Input";
 import CanchaSelector from "../components/CanchaSelector";
 import HorarioSelector from "../components/HorarioSelector";
 
-import { CANCHAS_MOCK, formatPrecio } from "../data/canchas";
-import { MY_MATCHES } from "../data/partidos";
+import {
+  CANCHAS_MOCK,
+  formatPrecio,
+} from "../data/canchas";
+
+import {
+  MY_MATCHES,
+  AVAILABLE_MATCHES,
+} from "../data/partidos";
 
 export default function CrearPartido() {
   const navigate = useNavigate();
@@ -34,13 +41,16 @@ export default function CrearPartido() {
     password: "",
   });
 
-  const [horarioSeleccionado, setHorarioSeleccionado] = useState(null);
+  const [horarioSeleccionado, setHorarioSeleccionado] =
+    useState(null);
+
   const [esPublico, setEsPublico] = useState(true);
   const [errores, setErrores] = useState({});
   const [mensaje, setMensaje] = useState("");
 
   const cancha = useMemo(
-    () => CANCHAS_MOCK.find((c) => c.id === canchaId) || null,
+    () =>
+      CANCHAS_MOCK.find((c) => c.id === canchaId) || null,
     [canchaId]
   );
 
@@ -78,6 +88,13 @@ export default function CrearPartido() {
     }
 
     return null;
+  };
+
+  const normalizarNombre = (nombre) => {
+    return nombre
+      .trim()
+      .replace(/\s+/g, " ")
+      .toLowerCase();
   };
 
   const setCampo = (campo, valor) => {
@@ -143,11 +160,57 @@ export default function CrearPartido() {
     }
 
     if (!form.nombre.trim()) {
-      nuevosErrores.nombre = "Ingresá un nombre para el partido.";
+      nuevosErrores.nombre =
+        "Ingresá un nombre para el partido.";
+    } else {
+      const nombreNuevo = normalizarNombre(form.nombre);
+
+      const nombreYaExiste = [
+        ...MY_MATCHES,
+        ...AVAILABLE_MATCHES,
+      ].some(
+        (partido) =>
+          normalizarNombre(partido.name) === nombreNuevo
+      );
+
+      if (nombreYaExiste) {
+        nuevosErrores.nombre =
+          "Ya existe un partido con ese nombre.";
+      }
     }
 
     if (!horarioSeleccionado) {
-      nuevosErrores.horario = "Seleccioná un horario disponible.";
+      nuevosErrores.horario =
+        "Seleccioná un horario disponible.";
+    }
+
+    if (cancha && horarioSeleccionado) {
+      const fecha =
+        horarioSeleccionado.dia === "hoy"
+          ? "Hoy"
+          : "Mañana";
+
+      const horarioYaOcupado = [
+        ...MY_MATCHES,
+        ...AVAILABLE_MATCHES,
+      ].some((partido) => {
+        const mismaCancha =
+          partido.canchaId === cancha.id;
+
+        const mismoDia =
+          partido.dayKey === horarioSeleccionado.dia ||
+          partido.date === fecha;
+
+        const mismaHora =
+          partido.time === horarioSeleccionado.hora;
+
+        return mismaCancha && mismoDia && mismaHora;
+      });
+
+      if (horarioYaOcupado) {
+        nuevosErrores.horario =
+          "Ese horario ya está ocupado por otro partido.";
+      }
     }
 
     if (!esPublico && !form.password.trim()) {
@@ -182,25 +245,64 @@ export default function CrearPartido() {
       fieldName: cancha.nombre,
       type: esPublico ? "Público" : "Privado",
       status: "Pendiente",
+
       date:
         horarioSeleccionado.dia === "hoy"
           ? "Hoy"
           : "Mañana",
+
+      dayKey: horarioSeleccionado.dia,
+
       time: horarioSeleccionado.hora,
       address: cancha.direccion,
+
       players: 1,
       maxPlayers: cupos,
-      pricePerPlayer: precioPorJugador.toLocaleString("es-AR"),
-      totalPrice: Number(cancha.precio).toLocaleString("es-AR"),
+
+      pricePerPlayer:
+        precioPorJugador.toLocaleString("es-AR"),
+
+      totalPrice:
+        Number(cancha.precio).toLocaleString("es-AR"),
 
       descripcion: form.descripcion.trim(),
-      password: esPublico ? null : form.password.trim(),
+
+      password: esPublico
+        ? null
+        : form.password.trim(),
+
       canchaId: cancha.id,
+      modalidad,
     };
 
-    MY_MATCHES.unshift(nuevoPartido);
+    /*
+     * El creador participa del partido.
+     */
+    MY_MATCHES.unshift({
+      ...nuevoPartido,
+    });
 
-    console.log("Partido creado (mock):", nuevoPartido);
+    /*
+     * También queda disponible para los demás usuarios.
+     *
+     * En la pantalla Partidos no aparecerá entre disponibles
+     * para el creador porque ya está dentro de MY_MATCHES.
+     */
+    AVAILABLE_MATCHES.unshift({
+      ...nuevoPartido,
+    });
+
+    /*
+     * Reservamos el horario.
+     * Desde ahora deja de aparecer al crear otro partido.
+     */
+    const horariosDelDia =
+      cancha.horarios?.[horarioSeleccionado.dia] || [];
+
+    cancha.horarios[horarioSeleccionado.dia] =
+      horariosDelDia.filter(
+        (hora) => hora !== horarioSeleccionado.hora
+      );
 
     setMensaje("¡Partido creado correctamente!");
 
@@ -442,10 +544,7 @@ export default function CrearPartido() {
         </Card>
 
         {/* Resumen */}
-        <Card
-          title="Resumen"
-          className="mt-5"
-        >
+        <Card title="Resumen" className="mt-5">
           <dl className="text-sm">
             <div className="flex items-center justify-between gap-4 py-1.5">
               <dt className="text-slate-500 dark:text-slate-400">

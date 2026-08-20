@@ -1,11 +1,21 @@
-import { MapPin, Users, Check } from "lucide-react";
+import { MapPin, Users, LogOut } from "lucide-react";
 
 export default function MatchCard({
   match,
   onJoin,
+  onLeave,
   joined = false,
 }) {
   const full = match.players >= match.capacity;
+
+  const handleClick = () => {
+    if (joined) {
+      onLeave?.(match);
+      return;
+    }
+
+    onJoin?.(match);
+  };
 
   return (
     <article className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-3 transition-all hover:border-green-500/40 dark:border-slate-700 dark:bg-slate-950 sm:p-4">
@@ -43,11 +53,11 @@ export default function MatchCard({
 
       <button
         type="button"
-        disabled={full || joined}
-        onClick={() => onJoin?.(match)}
+        disabled={full && !joined}
+        onClick={handleClick}
         className={
           joined
-            ? "inline-flex shrink-0 cursor-default items-center gap-1 rounded-xl bg-green-500/15 px-4 py-2.5 text-xs font-bold text-green-500 sm:px-5 sm:text-sm"
+            ? "inline-flex shrink-0 items-center gap-1 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-2.5 text-xs font-bold text-red-500 transition hover:bg-red-500 hover:text-white sm:px-5 sm:text-sm"
             : full
               ? "shrink-0 cursor-not-allowed rounded-xl bg-slate-200 px-4 py-2.5 text-xs font-bold text-slate-500 dark:bg-slate-700 dark:text-slate-400 sm:text-sm"
               : "shrink-0 rounded-xl bg-green-500 px-4 py-2.5 text-xs font-bold text-white shadow-lg shadow-green-500/30 transition-all hover:scale-105 sm:px-5 sm:text-sm"
@@ -55,8 +65,8 @@ export default function MatchCard({
       >
         {joined ? (
           <>
-            <Check size={16} />
-            Unido
+            <LogOut size={15} />
+            Abandonar
           </>
         ) : full ? (
           "Lleno"

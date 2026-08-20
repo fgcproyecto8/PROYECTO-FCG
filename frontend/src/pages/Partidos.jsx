@@ -8,6 +8,9 @@ import PartidoCard from "../components/PartidoCard";
 import SearchBar from "../components/SearchBar";
 import SectionTitle from "../components/SectionTitle";
 import JoinPrivateMatchModal from "../components/JoinPrivateMatchModal";
+import LeaveMatchModal from "../components/LeaveMatchModal";
+
+import { CANCHAS_MOCK } from "../data/canchas";
 
 import {
   MY_MATCHES,
@@ -18,9 +21,51 @@ export default function Partidos() {
   const navigate = useNavigate();
 
   const [query, setQuery] = useState("");
-  const [partidoPrivado, setPartidoPrivado] = useState(null);
+  const [partidoPrivado, setPartidoPrivado] =
+    useState(null);
+
+  const [partidoAAbandonar, setPartidoAAbandonar] =
+    useState(null);
 
   const [, forceUpdate] = useState(0);
+
+  const liberarHorario = (partido) => {
+    if (!partido.canchaId) {
+      return;
+    }
+
+    const cancha = CANCHAS_MOCK.find(
+      (item) => item.id === partido.canchaId
+    );
+
+    if (!cancha) {
+      return;
+    }
+
+    let dia = partido.dayKey;
+
+    if (!dia) {
+      if (partido.date === "Hoy") {
+        dia = "hoy";
+      }
+
+      if (partido.date === "Mañana") {
+        dia = "manana";
+      }
+    }
+
+    if (!dia || !cancha.horarios?.[dia]) {
+      return;
+    }
+
+    if (!cancha.horarios[dia].includes(partido.time)) {
+      cancha.horarios[dia].push(partido.time);
+
+      cancha.horarios[dia].sort((a, b) =>
+        a.localeCompare(b)
+      );
+    }
+  };
 
   const agregarAMisPartidos = (match) => {
     const yaEstaEnMisPartidos = MY_MATCHES.some(
@@ -35,15 +80,21 @@ export default function Partidos() {
       (partido) => partido.id === match.id
     );
 
-    if (partidoOriginal) {
-      partidoOriginal.players += 1;
+    if (!partidoOriginal) {
+      return;
     }
 
+    if (
+      partidoOriginal.players >=
+      partidoOriginal.maxPlayers
+    ) {
+      return;
+    }
+
+    partidoOriginal.players += 1;
+
     const partidoUnido = {
-      ...match,
-      players: partidoOriginal
-        ? partidoOriginal.players
-        : match.players + 1,
+      ...partidoOriginal,
     };
 
     MY_MATCHES.unshift(partidoUnido);
@@ -68,7 +119,9 @@ export default function Partidos() {
       return false;
     }
 
-    if (passwordIngresada !== partidoPrivado.password) {
+    if (
+      passwordIngresada !== partidoPrivado.password
+    ) {
       return false;
     }
 
@@ -79,15 +132,97 @@ export default function Partidos() {
     return true;
   };
 
+  const handleLeave = (match) => {
+    setPartidoAAbandonar(match);
+  };
+
+  const handleConfirmLeave = () => {
+    if (!partidoAAbandonar) {
+      return;
+    }
+
+    const indiceMisPartidos = MY_MATCHES.findIndex(
+      (partido) =>
+        partido.id === partidoAAbandonar.id
+    );
+
+    if (indiceMisPartidos === -1) {
+      return;
+    }
+
+    const [partidoEliminado] = MY_MATCHES.splice(
+      indiceMisPartidos,
+      1
+    );
+
+    const indiceDisponible =
+      AVAILABLE_MATCHES.findIndex(
+        (partido) =>
+          partido.id === partidoEliminado.id
+      );
+
+    /*
+     * El partido ya existe para otros usuarios.
+     */
+    if (indiceDisponible !== -1) {
+      AVAILABLE_MATCHES[indiceDisponible].players =
+        Math.max(
+          AVAILABLE_MATCHES[indiceDisponible].players - 1,
+          0
+        );
+
+      /*
+       * Sin jugadores = el partido desaparece.
+       */
+      if (
+        AVAILABLE_MATCHES[indiceDisponible].players === 0
+      ) {
+        const [partidoBorrado] =
+          AVAILABLE_MATCHES.splice(
+            indiceDisponible,
+            1
+          );
+
+        liberarHorario(partidoBorrado);
+      }
+    } else {
+      /*
+       * Partido que anteriormente solamente estaba
+       * dentro de MY_MATCHES.
+       */
+      const jugadoresRestantes = Math.max(
+        partidoEliminado.players - 1,
+        0
+      );
+
+      if (jugadoresRestantes > 0) {
+        AVAILABLE_MATCHES.unshift({
+          ...partidoEliminado,
+          players: jugadoresRestantes,
+        });
+      } else {
+        liberarHorario(partidoEliminado);
+      }
+    }
+
+    setPartidoAAbandonar(null);
+
+    forceUpdate((prev) => prev + 1);
+  };
+
   const partidosDisponibles = useMemo(() => {
     const idsMisPartidos = new Set(
       MY_MATCHES.map((partido) => partido.id)
     );
 
     return AVAILABLE_MATCHES.filter(
-      (partido) => !idsMisPartidos.has(partido.id)
+      (partido) =>
+        !idsMisPartidos.has(partido.id)
     );
-  }, [MY_MATCHES.length]);
+  }, [
+    MY_MATCHES.length,
+    AVAILABLE_MATCHES.length,
+  ]);
 
   const filteredMatches = useMemo(() => {
     const term = query.trim().toLowerCase();
@@ -122,7 +257,9 @@ export default function Partidos() {
 
           <button
             type="button"
-            onClick={() => navigate("/crear-partido")}
+            onClick={() =>
+              navigate("/crear-partido")
+            }
             className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-zinc-950 shadow-lg shadow-emerald-500/20 transition hover:bg-emerald-400"
           >
             <Plus size={18} />
@@ -145,6 +282,7 @@ export default function Partidos() {
                   key={match.id}
                   match={match}
                   variant="mine"
+                  onLeave={handleLeave}
                 />
               ))}
             </div>
@@ -195,12 +333,23 @@ export default function Partidos() {
         </section>
       </main>
 
-      {/* Modal para partidos privados */}
       {partidoPrivado && (
         <JoinPrivateMatchModal
           match={partidoPrivado}
-          onClose={() => setPartidoPrivado(null)}
+          onClose={() =>
+            setPartidoPrivado(null)
+          }
           onConfirm={handleConfirmPrivate}
+        />
+      )}
+
+      {partidoAAbandonar && (
+        <LeaveMatchModal
+          match={partidoAAbandonar}
+          onClose={() =>
+            setPartidoAAbandonar(null)
+          }
+          onConfirm={handleConfirmLeave}
         />
       )}
 

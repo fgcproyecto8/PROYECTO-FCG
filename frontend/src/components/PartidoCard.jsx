@@ -1,7 +1,19 @@
-import { Calendar, Clock, MapPin, Users } from "lucide-react";
+import {
+  Calendar,
+  Clock,
+  MapPin,
+  Users,
+  LogOut,
+} from "lucide-react";
+
 import { StatusBadge, TypeBadge } from "./StatusBadge";
 
-export default function MatchCard({ match, variant = "mine", onJoin }) {
+export default function MatchCard({
+  match,
+  variant = "mine",
+  onJoin,
+  onLeave,
+}) {
   const {
     image,
     name,
@@ -69,29 +81,17 @@ export default function MatchCard({ match, variant = "mine", onJoin }) {
         {/* Información */}
         <ul className="space-y-1.5 text-sm text-zinc-400">
           <li className="flex items-center gap-2">
-            <Calendar
-              size={14}
-              className="text-zinc-500"
-            />
-
+            <Calendar size={14} className="text-zinc-500" />
             <span>{date}</span>
           </li>
 
           <li className="flex items-center gap-2">
-            <Clock
-              size={14}
-              className="text-zinc-500"
-            />
-
+            <Clock size={14} className="text-zinc-500" />
             <span>{time} hs</span>
           </li>
 
           <li className="flex items-center gap-2">
-            <MapPin
-              size={14}
-              className="text-zinc-500"
-            />
-
+            <MapPin size={14} className="text-zinc-500" />
             <span className="truncate">
               {address}
             </span>
@@ -149,7 +149,19 @@ export default function MatchCard({ match, variant = "mine", onJoin }) {
           </div>
         </div>
 
-        {/* Botón Unirse */}
+        {/* Abandonar */}
+        {variant === "mine" && onLeave && (
+          <button
+            type="button"
+            onClick={() => onLeave(match)}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-red-500/40 bg-red-500/10 py-2.5 text-sm font-semibold text-red-500 transition hover:bg-red-500 hover:text-white"
+          >
+            <LogOut size={16} />
+            Abandonar partido
+          </button>
+        )}
+
+        {/* Unirse */}
         {variant === "available" && (
           <button
             type="button"
