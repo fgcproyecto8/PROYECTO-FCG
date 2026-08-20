@@ -17,6 +17,7 @@ import Card from "../components/Card";
 import Input from "../components/Input";
 import CanchaSelector from "../components/CanchaSelector";
 import HorarioSelector from "../components/HorarioSelector";
+import RatingBadge from "../components/RatingBadge";
 
 import {
   CANCHAS_MOCK,
@@ -275,27 +276,14 @@ export default function CrearPartido() {
       modalidad,
     };
 
-    /*
-     * El creador participa del partido.
-     */
     MY_MATCHES.unshift({
       ...nuevoPartido,
     });
 
-    /*
-     * También queda disponible para los demás usuarios.
-     *
-     * En la pantalla Partidos no aparecerá entre disponibles
-     * para el creador porque ya está dentro de MY_MATCHES.
-     */
     AVAILABLE_MATCHES.unshift({
       ...nuevoPartido,
     });
 
-    /*
-     * Reservamos el horario.
-     * Desde ahora deja de aparecer al crear otro partido.
-     */
     const horariosDelDia =
       cancha.horarios?.[horarioSeleccionado.dia] || [];
 
@@ -316,7 +304,6 @@ export default function CrearPartido() {
       <Header />
 
       <main className="mx-auto w-full max-w-3xl px-4 pb-32 pt-6">
-        {/* Volver */}
         <button
           type="button"
           onClick={() => navigate(-1)}
@@ -326,8 +313,7 @@ export default function CrearPartido() {
           Volver
         </button>
 
-        {/* Título */}
-        <h1 className="text-4xl font-extrabold tracking-tight">
+        <h1 className="text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white">
           Crear Partido
         </h1>
 
@@ -335,7 +321,6 @@ export default function CrearPartido() {
           Configurá los detalles y armá tu equipo.
         </p>
 
-        {/* Selección de cancha */}
         <Card
           icon={CalendarDays}
           title="Selección de Cancha"
@@ -351,6 +336,22 @@ export default function CrearPartido() {
             onSelect={seleccionarCancha}
           />
 
+          {cancha && (
+            <div className="mt-4 flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/60">
+              <div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Cancha seleccionada
+                </p>
+
+                <p className="mt-0.5 text-sm font-semibold text-slate-900 dark:text-white">
+                  {cancha.nombre}
+                </p>
+              </div>
+
+              <RatingBadge canchaId={cancha.id} />
+            </div>
+          )}
+
           {errores.cancha && (
             <p className="mt-2 text-xs text-red-500">
               {errores.cancha}
@@ -358,7 +359,6 @@ export default function CrearPartido() {
           )}
         </Card>
 
-        {/* Detalles */}
         <Card
           icon={SlidersHorizontal}
           title="Detalles del Partido"
@@ -375,7 +375,6 @@ export default function CrearPartido() {
               error={errores.nombre}
             />
 
-            {/* Horarios */}
             <div>
               <p className="mb-3 text-sm font-medium text-slate-700 dark:text-slate-300">
                 Horarios disponibles
@@ -412,7 +411,6 @@ export default function CrearPartido() {
               )}
             </div>
 
-            {/* Ubicación */}
             <div>
               <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
                 Ubicación
@@ -431,7 +429,6 @@ export default function CrearPartido() {
               </div>
             </div>
 
-            {/* Tipo / Precio */}
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
@@ -456,7 +453,6 @@ export default function CrearPartido() {
               </div>
             </div>
 
-            {/* Descripción */}
             <div>
               <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
                 Descripción (Opcional)
@@ -475,11 +471,10 @@ export default function CrearPartido() {
           </div>
         </Card>
 
-        {/* Público / Privado */}
         <Card className="mt-5">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <h3 className="flex items-center gap-2 text-lg font-bold">
+              <h3 className="flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-white">
                 {esPublico ? (
                   <Eye className="h-5 w-5 text-emerald-500" />
                 ) : (
@@ -543,7 +538,6 @@ export default function CrearPartido() {
           )}
         </Card>
 
-        {/* Resumen */}
         <Card title="Resumen" className="mt-5">
           <dl className="text-sm">
             <div className="flex items-center justify-between gap-4 py-1.5">
@@ -551,8 +545,12 @@ export default function CrearPartido() {
                 Cancha
               </dt>
 
-              <dd className="text-right font-medium">
-                {cancha?.nombre || "—"}
+              <dd className="flex items-center gap-2 text-right font-medium">
+                <span>{cancha?.nombre || "—"}</span>
+
+                {cancha && (
+                  <RatingBadge canchaId={cancha.id} />
+                )}
               </dd>
             </div>
 

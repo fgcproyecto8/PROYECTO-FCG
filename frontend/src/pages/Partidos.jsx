@@ -287,8 +287,8 @@ export default function Partidos() {
               ))}
             </div>
           ) : (
-            <div className="rounded-2xl border border-dashed border-zinc-800 bg-zinc-900/40 p-8 text-center">
-              <p className="text-sm text-zinc-400">
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center dark:border-zinc-800 dark:bg-zinc-900/40">
+              <p className="text-sm text-slate-900 dark:text-white">
                 Todavía no participás en ningún partido.
               </p>
             </div>

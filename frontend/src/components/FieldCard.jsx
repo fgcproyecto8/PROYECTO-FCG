@@ -1,12 +1,20 @@
-import { MapPin, Star } from "lucide-react";
+import { MapPin } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import RatingBadge from "./RatingBadge";
 
-export default function FieldCard({ field }) {
-  const navigate = useNavigate();
+export default function FieldCard({
+  field,
+}) {
+  const navigate =
+    useNavigate();
 
   return (
     <article
-      onClick={() => navigate(`/canchas/${field.id}/editar`)}
+      onClick={() =>
+        navigate(
+          `/canchas/${field.id}/editar`
+        )
+      }
       className="group w-[280px] shrink-0 cursor-pointer overflow-hidden rounded-2xl border border-slate-200 bg-white transition-all hover:-translate-y-1 hover:border-green-500/40 hover:shadow-2xl hover:shadow-green-500/10 dark:border-slate-700 dark:bg-slate-950 sm:w-auto"
     >
       <div className="relative h-44 overflow-hidden">
@@ -19,10 +27,11 @@ export default function FieldCard({ field }) {
 
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
 
-        <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-white/90 px-2.5 py-1 text-xs font-bold text-slate-900 backdrop-blur dark:bg-slate-900/90 dark:text-white">
-          <Star className="h-3 w-3 fill-green-500 text-green-500" />
-          {field.rating}
-        </span>
+        <div className="absolute right-3 top-3">
+          <RatingBadge
+            canchaId={field.id}
+          />
+        </div>
       </div>
 
       <div className="p-4">
@@ -42,14 +51,16 @@ export default function FieldCard({ field }) {
         </div>
 
         <div className="mt-3 flex flex-wrap gap-1.5">
-          {field.tags.map((t) => (
-            <span
-              key={t}
-              className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-700 dark:bg-slate-700 dark:text-slate-200"
-            >
-              {t}
-            </span>
-          ))}
+          {field.tags.map(
+            (tag) => (
+              <span
+                key={tag}
+                className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-700 dark:bg-slate-700 dark:text-slate-200"
+              >
+                {tag}
+              </span>
+            )
+          )}
         </div>
       </div>
     </article>

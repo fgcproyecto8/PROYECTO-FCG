@@ -235,7 +235,6 @@ export default function Home() {
       location: cancha.direccion,
       price: formatPrecio(cancha.precio),
       image: cancha.imagen,
-      rating: null,
       tags: [cancha.tipo],
     })
   );

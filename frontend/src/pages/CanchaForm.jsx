@@ -1,10 +1,19 @@
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import {
+  useNavigate,
+  useParams,
+} from "react-router-dom";
+
 import {
   MapPin,
   Phone,
   DollarSign,
   CalendarDays,
+  Star,
 } from "lucide-react";
 
 import ImageUploader from "../components/ImageUploader";
@@ -15,16 +24,28 @@ import {
   canchaVacia,
 } from "../data/canchas";
 
+import {
+  guardarCalificacion,
+  obtenerCalificacionUsuario,
+  obtenerPromedioCancha,
+} from "../data/calificaciones";
+
 function obtenerUsuario() {
   try {
-    return JSON.parse(localStorage.getItem("user")) || null;
+    return (
+      JSON.parse(
+        localStorage.getItem("user")
+      ) || null
+    );
   } catch {
     return null;
   }
 }
 
 function usuarioEsOwner(usuario) {
-  const rol = usuario?.role?.trim().toLowerCase();
+  const rol = usuario?.role
+    ?.trim()
+    .toLowerCase();
 
   return [
     "owner",
@@ -37,13 +58,28 @@ function usuarioEsOwner(usuario) {
   ].includes(rol);
 }
 
+function usuarioEsJugador(usuario) {
+  const rol = usuario?.role
+    ?.trim()
+    .toLowerCase();
+
+  return [
+    "player",
+    "jugador",
+  ].includes(rol);
+}
+
 export default function CanchaForm() {
   const { id } = useParams();
   const navigate = useNavigate();
 
   const usuario = obtenerUsuario();
 
-  const esOwner = usuarioEsOwner(usuario);
+  const esOwner =
+    usuarioEsOwner(usuario);
+
+  const esJugador =
+    usuarioEsJugador(usuario);
 
   const emailUsuario = usuario?.email
     ?.trim()
@@ -56,9 +92,12 @@ export default function CanchaForm() {
       return canchaVacia();
     }
 
-    const encontrada = CANCHAS_MOCK.find(
-      (cancha) => String(cancha.id) === String(id)
-    );
+    const encontrada =
+      CANCHAS_MOCK.find(
+        (cancha) =>
+          String(cancha.id) ===
+          String(id)
+      );
 
     if (!encontrada) {
       return canchaVacia();
@@ -67,17 +106,49 @@ export default function CanchaForm() {
     return {
       ...encontrada,
       horarios: {
-        hoy: [...encontrada.horarios.hoy],
-        manana: [...encontrada.horarios.manana],
+        hoy: [
+          ...encontrada.horarios.hoy,
+        ],
+        manana: [
+          ...encontrada.horarios
+            .manana,
+        ],
       },
     };
   }, [id]);
 
-  const [form, setForm] = useState(inicial);
+  const [form, setForm] =
+    useState(inicial);
 
-  const emailDueno = form.ownerEmail
-    ?.trim()
-    .toLowerCase();
+  const [
+    calificacionUsuario,
+    setCalificacionUsuario,
+  ] = useState(() => {
+    if (!id || !emailUsuario) {
+      return 0;
+    }
+
+    return obtenerCalificacionUsuario(
+      id,
+      emailUsuario
+    );
+  });
+
+  const [
+    promedio,
+    setPromedio,
+  ] = useState(() => {
+    if (!id) {
+      return null;
+    }
+
+    return obtenerPromedioCancha(id);
+  });
+
+  const emailDueno =
+    form.ownerEmail
+      ?.trim()
+      .toLowerCase();
 
   const esPropietario =
     !esNueva &&
@@ -90,71 +161,105 @@ export default function CanchaForm() {
     : esPropietario;
 
   useEffect(() => {
-    if (esNueva && !esOwner) {
+    if (
+      esNueva &&
+      !esOwner
+    ) {
       navigate("/canchas", {
         replace: true,
       });
     }
-  }, [esNueva, esOwner, navigate]);
+  }, [
+    esNueva,
+    esOwner,
+    navigate,
+  ]);
 
-  const setCampo = (campo) => (e) => {
-    if (!puedeEditar) return;
-
-    setForm((prev) => ({
-      ...prev,
-      [campo]: e.target.value,
-    }));
-  };
-
-  const toggleHorario = (dia) => (hora) => {
-    if (!puedeEditar) return;
-
-    setForm((prev) => {
-      const actuales = prev.horarios[dia];
-
-      const nuevos = actuales.includes(hora)
-        ? actuales.filter((h) => h !== hora)
-        : [...actuales, hora].sort((a, b) =>
-            a.localeCompare(b)
-          );
-
-      return {
-        ...prev,
-        horarios: {
-          ...prev.horarios,
-          [dia]: nuevos,
-        },
-      };
-    });
-  };
-
-  const agregarHorario = (dia) => (hora) => {
-    if (!puedeEditar) return;
-    if (!hora) return;
-
-    setForm((prev) => {
-      const actuales = prev.horarios[dia];
-
-      if (actuales.includes(hora)) {
-        return prev;
+  const setCampo =
+    (campo) => (e) => {
+      if (!puedeEditar) {
+        return;
       }
 
-      const nuevos = [...actuales, hora].sort(
-        (a, b) => a.localeCompare(b)
-      );
-
-      return {
+      setForm((prev) => ({
         ...prev,
-        horarios: {
-          ...prev.horarios,
-          [dia]: nuevos,
-        },
-      };
-    });
-  };
+        [campo]: e.target.value,
+      }));
+    };
+
+  const toggleHorario =
+    (dia) => (hora) => {
+      if (!puedeEditar) {
+        return;
+      }
+
+      setForm((prev) => {
+        const actuales =
+          prev.horarios[dia];
+
+        const nuevos =
+          actuales.includes(hora)
+            ? actuales.filter(
+                (h) => h !== hora
+              )
+            : [
+                ...actuales,
+                hora,
+              ].sort((a, b) =>
+                a.localeCompare(b)
+              );
+
+        return {
+          ...prev,
+          horarios: {
+            ...prev.horarios,
+            [dia]: nuevos,
+          },
+        };
+      });
+    };
+
+  const agregarHorario =
+    (dia) => (hora) => {
+      if (!puedeEditar) {
+        return;
+      }
+
+      if (!hora) {
+        return;
+      }
+
+      setForm((prev) => {
+        const actuales =
+          prev.horarios[dia];
+
+        if (
+          actuales.includes(hora)
+        ) {
+          return prev;
+        }
+
+        const nuevos = [
+          ...actuales,
+          hora,
+        ].sort((a, b) =>
+          a.localeCompare(b)
+        );
+
+        return {
+          ...prev,
+          horarios: {
+            ...prev.horarios,
+            [dia]: nuevos,
+          },
+        };
+      });
+    };
 
   const handleImagen = (url) => {
-    if (!puedeEditar) return;
+    if (!puedeEditar) {
+      return;
+    }
 
     setForm((prev) => ({
       ...prev,
@@ -162,30 +267,63 @@ export default function CanchaForm() {
     }));
   };
 
+  const handleCalificar = (
+    valor
+  ) => {
+    if (
+      !esJugador ||
+      !id ||
+      !emailUsuario
+    ) {
+      return;
+    }
+
+    guardarCalificacion(
+      id,
+      emailUsuario,
+      valor
+    );
+
+    setCalificacionUsuario(valor);
+
+    setPromedio(
+      obtenerPromedioCancha(id)
+    );
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
 
-    if (!puedeEditar) return;
+    if (!puedeEditar) {
+      return;
+    }
 
     if (esNueva) {
       const nuevaCancha = {
         ...form,
         id: Date.now(),
-        ownerEmail: usuario.email,
+        ownerEmail:
+          usuario.email,
       };
 
-      CANCHAS_MOCK.push(nuevaCancha);
-    } else {
-      const indice = CANCHAS_MOCK.findIndex(
-        (cancha) =>
-          String(cancha.id) === String(id)
+      CANCHAS_MOCK.push(
+        nuevaCancha
       );
+    } else {
+      const indice =
+        CANCHAS_MOCK.findIndex(
+          (cancha) =>
+            String(cancha.id) ===
+            String(id)
+        );
 
       if (indice !== -1) {
         CANCHAS_MOCK[indice] = {
           ...form,
           ownerEmail:
-            CANCHAS_MOCK[indice].ownerEmail,
+            CANCHAS_MOCK[
+              indice
+            ].ownerEmail,
         };
       }
     }
@@ -203,8 +341,8 @@ export default function CanchaForm() {
           {esNueva
             ? "Agregar Cancha"
             : puedeEditar
-            ? "Editar Cancha"
-            : "Detalles de la Cancha"}
+              ? "Editar Cancha"
+              : "Detalles de la Cancha"}
         </h1>
 
         <p className="mb-5 text-xs text-slate-500 dark:text-slate-400">
@@ -215,36 +353,52 @@ export default function CanchaForm() {
             : "Podés consultar la información de esta cancha."}
         </p>
 
-        <div
-          className={
-            puedeEditar
-              ? ""
-              : "pointer-events-none"
-          }
-        >
+        {puedeEditar ? (
           <ImageUploader
             value={form.imagen}
             onChange={handleImagen}
           />
-        </div>
+        ) : form.imagen ? (
+          <div className="h-52 w-full overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800 sm:h-64">
+            <img
+              src={form.imagen}
+              alt={form.nombre}
+              className="h-full w-full object-cover"
+            />
+          </div>
+        ) : (
+          <div className="flex h-52 w-full items-center justify-center rounded-xl border border-slate-200 bg-slate-100 text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 sm:h-64">
+            Sin imagen
+          </div>
+        )}
 
         <Campo label="Nombre de la Cancha">
           <IconInput
             icon={CalendarDays}
             value={form.nombre}
-            onChange={setCampo("nombre")}
+            onChange={setCampo(
+              "nombre"
+            )}
             placeholder="Cancha El Templo 5v5"
-            disabled={!puedeEditar}
+            disabled={
+              !puedeEditar
+            }
           />
         </Campo>
 
         <Campo label="Dirección">
           <IconInput
             icon={MapPin}
-            value={form.direccion}
-            onChange={setCampo("direccion")}
+            value={
+              form.direccion
+            }
+            onChange={setCampo(
+              "direccion"
+            )}
             placeholder="Av. Siempreviva 123"
-            disabled={!puedeEditar}
+            disabled={
+              !puedeEditar
+            }
           />
         </Campo>
 
@@ -252,10 +406,16 @@ export default function CanchaForm() {
           <Campo label="Teléfono">
             <IconInput
               icon={Phone}
-              value={form.telefono}
-              onChange={setCampo("telefono")}
+              value={
+                form.telefono
+              }
+              onChange={setCampo(
+                "telefono"
+              )}
               placeholder="3492123456"
-              disabled={!puedeEditar}
+              disabled={
+                !puedeEditar
+              }
             />
           </Campo>
 
@@ -263,10 +423,16 @@ export default function CanchaForm() {
             <IconInput
               icon={DollarSign}
               type="number"
-              value={form.precio}
-              onChange={setCampo("precio")}
+              value={
+                form.precio
+              }
+              onChange={setCampo(
+                "precio"
+              )}
               placeholder="45000"
-              disabled={!puedeEditar}
+              disabled={
+                !puedeEditar
+              }
             />
           </Campo>
         </div>
@@ -281,32 +447,108 @@ export default function CanchaForm() {
             : "Horarios disponibles de la cancha."}
         </p>
 
-        <div
-          className={
-            puedeEditar
-              ? ""
-              : "pointer-events-none"
+        <HorarioChips
+          titulo="HOY"
+          seleccionados={
+            form.horarios.hoy
           }
-        >
-          <HorarioChips
-            titulo="HOY"
-            seleccionados={form.horarios.hoy}
-            onToggle={toggleHorario("hoy")}
-            onAgregar={agregarHorario("hoy")}
-          />
+          onToggle={toggleHorario(
+            "hoy"
+          )}
+          onAgregar={agregarHorario(
+            "hoy"
+          )}
+          editable={
+            puedeEditar
+          }
+        />
 
-          <HorarioChips
-            titulo="MAÑANA"
-            seleccionados={form.horarios.manana}
-            onToggle={toggleHorario("manana")}
-            onAgregar={agregarHorario("manana")}
-          />
-        </div>
+        <HorarioChips
+          titulo="MAÑANA"
+          seleccionados={
+            form.horarios
+              .manana
+          }
+          onToggle={toggleHorario(
+            "manana"
+          )}
+          onAgregar={agregarHorario(
+            "manana"
+          )}
+          editable={
+            puedeEditar
+          }
+        />
+
+        {!esNueva && (
+          <div className="mt-8 border-t border-slate-200 pt-6 dark:border-slate-800">
+            <h2 className="text-lg font-extrabold text-slate-900 dark:text-white">
+              Calificación
+            </h2>
+
+            <div className="mt-3 flex items-center gap-2">
+              <Star className="h-5 w-5 fill-amber-400 text-amber-400" />
+
+              <span className="text-lg font-bold text-slate-900 dark:text-white">
+                {promedio !== null
+                  ? promedio.toFixed(
+                      1
+                    )
+                  : "Sin calificar"}
+              </span>
+            </div>
+
+            {esJugador && (
+              <div className="mt-5">
+                <p className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-300">
+                  Tu calificación
+                </p>
+
+                <div className="flex items-center gap-2">
+                  {[
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                  ].map(
+                    (
+                      valor
+                    ) => (
+                      <button
+                        key={
+                          valor
+                        }
+                        type="button"
+                        onClick={() =>
+                          handleCalificar(
+                            valor
+                          )
+                        }
+                        className="transition hover:scale-110"
+                        aria-label={`Calificar con ${valor} estrellas`}
+                      >
+                        <Star
+                          className={`h-7 w-7 ${
+                            valor <=
+                            calificacionUsuario
+                              ? "fill-amber-400 text-amber-400"
+                              : "text-slate-300 dark:text-slate-600"
+                          }`}
+                        />
+                      </button>
+                    )
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {puedeEditar && (
           <button
             type="submit"
-            className="mt-4 w-full rounded-lg bg-emerald-500 py-3 text-sm font-bold text-white transition hover:bg-emerald-600"
+            className="mt-6 w-full rounded-lg bg-emerald-500 py-3 text-sm font-bold text-white transition hover:bg-emerald-600"
           >
             {esNueva
               ? "Agregar Cancha"
@@ -316,17 +558,24 @@ export default function CanchaForm() {
 
         <button
           type="button"
-          onClick={() => navigate(-1)}
+          onClick={() =>
+            navigate(-1)
+          }
           className="mt-3 w-full rounded-lg border border-slate-300 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
         >
-          {puedeEditar ? "Cancelar" : "Volver"}
+          {puedeEditar
+            ? "Cancelar"
+            : "Volver"}
         </button>
       </form>
     </div>
   );
 }
 
-function Campo({ label, children }) {
+function Campo({
+  label,
+  children,
+}) {
   return (
     <div className="mt-4">
       <label className="mb-1.5 block text-[11px] font-bold text-slate-700 dark:text-slate-300">

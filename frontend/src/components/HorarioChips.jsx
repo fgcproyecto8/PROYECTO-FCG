@@ -1,5 +1,9 @@
 import { useState } from "react";
-import { PlusCircle, Check, X } from "lucide-react";
+import {
+  PlusCircle,
+  Check,
+  X,
+} from "lucide-react";
 import { HORARIOS_BASE } from "../data/canchas";
 
 export default function HorarioChips({
@@ -7,12 +11,20 @@ export default function HorarioChips({
   seleccionados,
   onToggle,
   onAgregar,
+  editable = true,
 }) {
-  const [mostrarNuevoHorario, setMostrarNuevoHorario] = useState(false);
+  const [mostrarNuevoHorario, setMostrarNuevoHorario] =
+    useState(false);
+
   const [nuevoHorario, setNuevoHorario] = useState("");
 
-  const [horariosPersonalizados, setHorariosPersonalizados] = useState(() =>
-    seleccionados.filter((hora) => !HORARIOS_BASE.includes(hora))
+  const [
+    horariosPersonalizados,
+    setHorariosPersonalizados,
+  ] = useState(() =>
+    seleccionados.filter(
+      (hora) => !HORARIOS_BASE.includes(hora)
+    )
   );
 
   const horariosAMostrar = [
@@ -23,6 +35,7 @@ export default function HorarioChips({
   ].sort((a, b) => a.localeCompare(b));
 
   const handleAgregarHorario = () => {
+    if (!editable) return;
     if (!nuevoHorario) return;
 
     if (!HORARIOS_BASE.includes(nuevoHorario)) {
@@ -57,29 +70,47 @@ export default function HorarioChips({
           {titulo}
         </span>
 
-        <button
-          type="button"
-          onClick={() => setMostrarNuevoHorario(true)}
-          className="text-slate-400 transition hover:text-emerald-500"
-        >
-          <PlusCircle size={18} />
-        </button>
+        {editable && (
+          <button
+            type="button"
+            onClick={() =>
+              setMostrarNuevoHorario(true)
+            }
+            className="text-slate-400 transition hover:text-emerald-500"
+          >
+            <PlusCircle size={18} />
+          </button>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-2">
         {horariosAMostrar.map((hora) => {
-          const activo = seleccionados.includes(hora);
+          const activo =
+            seleccionados.includes(hora);
+
+          const clases = `rounded-md px-3 py-1.5 text-xs font-semibold ${
+            activo
+              ? "bg-emerald-500/20 text-emerald-600 ring-1 ring-emerald-500/50 dark:text-emerald-300"
+              : "bg-slate-200 text-slate-500 ring-1 ring-slate-300 dark:bg-slate-800/60 dark:text-slate-500 dark:ring-slate-700/60"
+          }`;
+
+          if (!editable) {
+            return (
+              <span
+                key={hora}
+                className={clases}
+              >
+                {hora}
+              </span>
+            );
+          }
 
           return (
             <button
               key={hora}
               type="button"
               onClick={() => onToggle(hora)}
-              className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
-                activo
-                  ? "bg-emerald-500/20 text-emerald-500 ring-1 ring-emerald-500/50 dark:text-emerald-300"
-                  : "bg-slate-200 text-slate-500 ring-1 ring-slate-300 hover:text-slate-700 dark:bg-slate-800/60 dark:text-slate-500 dark:ring-slate-700/60 dark:hover:text-slate-300"
-              }`}
+              className={`${clases} transition hover:text-slate-700 dark:hover:text-slate-300`}
             >
               {hora}
             </button>
@@ -87,12 +118,14 @@ export default function HorarioChips({
         })}
       </div>
 
-      {mostrarNuevoHorario && (
+      {editable && mostrarNuevoHorario && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <input
             type="time"
             value={nuevoHorario}
-            onChange={(e) => setNuevoHorario(e.target.value)}
+            onChange={(e) =>
+              setNuevoHorario(e.target.value)
+            }
             className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-emerald-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
           />
 
