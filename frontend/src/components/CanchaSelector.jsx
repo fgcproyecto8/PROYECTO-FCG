@@ -1,5 +1,6 @@
 import { Check, MapPin } from "lucide-react";
 import { formatPrecio } from "../data/canchas";
+import RatingBadge from "./RatingBadge";
 
 export default function CanchaSelector({
   canchas = [],
@@ -26,14 +27,14 @@ export default function CanchaSelector({
             key={cancha.id}
             type="button"
             onClick={() => onSelect(cancha)}
-            className={`relative w-[300px] shrink-0 overflow-hidden rounded-xl border text-left transition sm:w-[315px] ${
+            className={`relative w-[300px] shrink-0 overflow-hidden rounded-xl border bg-white text-left transition dark:bg-slate-900 sm:w-[315px] ${
               activa
                 ? "border-emerald-500 ring-1 ring-emerald-500/60"
                 : "border-neutral-200 hover:border-emerald-500/50 dark:border-neutral-800"
             }`}
           >
             {activa && (
-              <span className="absolute right-3 top-3 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500 text-neutral-950">
+              <span className="absolute right-3 top-3 z-20 flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500 text-neutral-950">
                 <Check
                   className="h-4 w-4"
                   strokeWidth={3}
@@ -49,13 +50,17 @@ export default function CanchaSelector({
                 className="h-full w-full object-cover brightness-[.55]"
               />
 
+              <div className="absolute left-3 top-3 z-10">
+                <RatingBadge canchaId={cancha.id} />
+              </div>
+
               <span className="absolute bottom-2 left-3 rounded-md border border-emerald-500/60 bg-neutral-950/70 px-2 py-1 text-[11px] font-bold text-emerald-400">
                 {cancha.tipo}
               </span>
             </div>
 
             <div className="p-3">
-              <h3 className="text-base font-bold">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">
                 {cancha.nombre}
               </h3>
 

@@ -7,29 +7,334 @@ import BottomNavbar from "../components/BottomNavbar";
 import PartidoCard from "../components/PartidoCard";
 import SearchBar from "../components/SearchBar";
 import SectionTitle from "../components/SectionTitle";
+import JoinPrivateMatchModal from "../components/JoinPrivateMatchModal";
+import LeaveMatchModal from "../components/LeaveMatchModal";
+import MatchDetailsModal from "../components/MatchDetailsModal";
+import InviteFriendModal from "../components/InviteFriendModal";
+
+import { CANCHAS_MOCK } from "../data/canchas";
+import { FRIENDS_MOCK } from "../data/friends";
 
 import {
   MY_MATCHES,
   AVAILABLE_MATCHES,
+  getCurrentPlayer,
 } from "../data/partidos";
 
 export default function Partidos() {
   const navigate = useNavigate();
+
   const [query, setQuery] = useState("");
+
+  const [partidoPrivado, setPartidoPrivado] =
+    useState(null);
+
+  const [partidoAAbandonar, setPartidoAAbandonar] =
+    useState(null);
+
+  const [partidoDetalle, setPartidoDetalle] =
+    useState(null);
+
+  const [partidoAInvitar, setPartidoAInvitar] =
+    useState(null);
+
+  const [invitacionesEnviadas, setInvitacionesEnviadas] =
+    useState([]);
+
+  const [, forceUpdate] = useState(0);
+
+  const liberarHorario = (partido) => {
+    if (!partido.canchaId) return;
+
+    const cancha = CANCHAS_MOCK.find(
+      (item) => item.id === partido.canchaId
+    );
+
+    if (!cancha) return;
+
+    let dia = partido.dayKey;
+
+    if (!dia) {
+      if (partido.date === "Hoy") dia = "hoy";
+      if (partido.date === "Mañana") dia = "manana";
+    }
+
+    if (!dia || !cancha.horarios?.[dia]) return;
+
+    if (!cancha.horarios[dia].includes(partido.time)) {
+      cancha.horarios[dia].push(partido.time);
+
+      cancha.horarios[dia].sort((a, b) =>
+        a.localeCompare(b)
+      );
+    }
+  };
+
+  const agregarAMisPartidos = (match) => {
+    const yaEstaEnMisPartidos = MY_MATCHES.some(
+      (partido) => partido.id === match.id
+    );
+
+    if (yaEstaEnMisPartidos) return;
+
+    const partidoOriginal = AVAILABLE_MATCHES.find(
+      (partido) => partido.id === match.id
+    );
+
+    if (!partidoOriginal) return;
+
+    if (
+      partidoOriginal.players >=
+      partidoOriginal.maxPlayers
+    ) {
+      return;
+    }
+
+    const usuarioActual = getCurrentPlayer();
+
+    const yaEstaEnLista =
+      partidoOriginal.playersList?.some(
+        (player) => player.id === usuarioActual.id
+      );
+
+    if (!yaEstaEnLista) {
+      partidoOriginal.playersList = [
+        ...(partidoOriginal.playersList || []),
+        usuarioActual,
+      ];
+    }
+
+    partidoOriginal.players =
+      partidoOriginal.playersList.length;
+
+    MY_MATCHES.unshift({
+      ...partidoOriginal,
+      playersList: [...partidoOriginal.playersList],
+    });
+
+    forceUpdate((prev) => prev + 1);
+  };
+
+  const handleJoin = (match) => {
+    const esPrivado =
+      match.type?.trim().toLowerCase() === "privado";
+
+    if (esPrivado) {
+      setPartidoPrivado(match);
+      return;
+    }
+
+    agregarAMisPartidos(match);
+  };
+
+  const handleConfirmPrivate = (
+    passwordIngresada
+  ) => {
+    if (!partidoPrivado) return false;
+
+    if (
+      passwordIngresada !== partidoPrivado.password
+    ) {
+      return false;
+    }
+
+    agregarAMisPartidos(partidoPrivado);
+    setPartidoPrivado(null);
+
+    return true;
+  };
+
+  const handleLeave = (match) => {
+    setPartidoAAbandonar(match);
+  };
+
+  const quitarUsuario = (partido) => {
+    const usuarioActual = getCurrentPlayer();
+
+    const listaActual = [
+      ...(partido.playersList || []),
+    ];
+
+    let nuevaLista = listaActual.filter(
+      (player) => player.id !== usuarioActual.id
+    );
+
+    /*
+     * Fallback temporal para partidos mock.
+     */
+    if (
+      nuevaLista.length === listaActual.length &&
+      nuevaLista.length > 0
+    ) {
+      nuevaLista = nuevaLista.slice(0, -1);
+    }
+
+    partido.playersList = nuevaLista;
+    partido.players = nuevaLista.length;
+  };
+
+  const handleConfirmLeave = () => {
+    if (!partidoAAbandonar) return;
+
+    const indiceMisPartidos = MY_MATCHES.findIndex(
+      (partido) =>
+        partido.id === partidoAAbandonar.id
+    );
+
+    if (indiceMisPartidos === -1) return;
+
+    const [partidoEliminado] = MY_MATCHES.splice(
+      indiceMisPartidos,
+      1
+    );
+
+    const indiceDisponible =
+      AVAILABLE_MATCHES.findIndex(
+        (partido) =>
+          partido.id === partidoEliminado.id
+      );
+
+    if (indiceDisponible !== -1) {
+      const partidoDisponible =
+        AVAILABLE_MATCHES[indiceDisponible];
+
+      quitarUsuario(partidoDisponible);
+
+      if (partidoDisponible.players === 0) {
+        const [partidoBorrado] =
+          AVAILABLE_MATCHES.splice(
+            indiceDisponible,
+            1
+          );
+
+        liberarHorario(partidoBorrado);
+      }
+    } else {
+      quitarUsuario(partidoEliminado);
+
+      if (partidoEliminado.players > 0) {
+        AVAILABLE_MATCHES.unshift({
+          ...partidoEliminado,
+          playersList: [
+            ...(partidoEliminado.playersList || []),
+          ],
+        });
+      } else {
+        liberarHorario(partidoEliminado);
+      }
+    }
+
+    setPartidoAAbandonar(null);
+
+    forceUpdate((prev) => prev + 1);
+  };
+
+  /*
+   * Abrir modal de invitación.
+   */
+  const handleOpenInvite = (match) => {
+    const pertenece = MY_MATCHES.some(
+      (partido) => partido.id === match.id
+    );
+
+    const estaLleno =
+      match.players >= match.maxPlayers;
+
+    if (!pertenece || estaLleno) {
+      return;
+    }
+
+    setPartidoAInvitar(match);
+  };
+
+  /*
+   * Crear invitación mock.
+   *
+   * IMPORTANTE:
+   * Esto NO agrega al amigo al partido.
+   */
+  const handleInviteFriend = (friend) => {
+    if (!partidoAInvitar) {
+      return;
+    }
+
+    const usuarioActual = getCurrentPlayer();
+
+    const yaFueInvitado =
+      invitacionesEnviadas.some(
+        (invitacion) =>
+          invitacion.matchId === partidoAInvitar.id &&
+          invitacion.toUserId === friend.id &&
+          invitacion.status === "pending"
+      );
+
+    if (yaFueInvitado) {
+      return;
+    }
+
+    const nuevaInvitacion = {
+      id: `invitacion-${Date.now()}-${friend.id}`,
+      matchId: partidoAInvitar.id,
+      fromUserId: usuarioActual.id,
+      toUserId: friend.id,
+      status: "pending",
+    };
+
+    setInvitacionesEnviadas((prev) => [
+      ...prev,
+      nuevaInvitacion,
+    ]);
+  };
+
+  const invitedIds = partidoAInvitar
+    ? invitacionesEnviadas
+        .filter(
+          (invitacion) =>
+            invitacion.matchId ===
+              partidoAInvitar.id &&
+            invitacion.status === "pending"
+        )
+        .map(
+          (invitacion) => invitacion.toUserId
+        )
+    : [];
+
+  const partidosDisponibles = useMemo(() => {
+    const idsMisPartidos = new Set(
+      MY_MATCHES.map((partido) => partido.id)
+    );
+
+    return AVAILABLE_MATCHES.filter(
+      (partido) =>
+        !idsMisPartidos.has(partido.id)
+    );
+  }, [
+    MY_MATCHES.length,
+    AVAILABLE_MATCHES.length,
+  ]);
 
   const filteredMatches = useMemo(() => {
     const term = query.trim().toLowerCase();
 
     if (!term) {
-      return AVAILABLE_MATCHES;
+      return partidosDisponibles;
     }
 
-    return AVAILABLE_MATCHES.filter(
+    return partidosDisponibles.filter(
       (match) =>
         match.name.toLowerCase().includes(term) ||
         match.address.toLowerCase().includes(term)
     );
-  }, [query]);
+  }, [query, partidosDisponibles]);
+
+  const puedeInvitarDesdeDetalles =
+    partidoDetalle &&
+    MY_MATCHES.some(
+      (partido) =>
+        partido.id === partidoDetalle.id
+    ) &&
+    partidoDetalle.players <
+      partidoDetalle.maxPlayers;
 
   return (
     <div className="min-h-screen bg-white pb-24 dark:bg-slate-950">
@@ -50,7 +355,9 @@ export default function Partidos() {
 
           <button
             type="button"
-            onClick={() => navigate("/crear-partido")}
+            onClick={() =>
+              navigate("/crear-partido")
+            }
             className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-zinc-950 shadow-lg shadow-emerald-500/20 transition hover:bg-emerald-400"
           >
             <Plus size={18} />
@@ -63,7 +370,6 @@ export default function Partidos() {
           <SectionTitle
             icon={CalendarCheck}
             title="Mis Partidos"
-            actionLabel="Ver todos"
             onAction={() => navigate("/partidos")}
           />
 
@@ -74,12 +380,14 @@ export default function Partidos() {
                   key={match.id}
                   match={match}
                   variant="mine"
+                  onLeave={handleLeave}
+                  onDetails={setPartidoDetalle}
                 />
               ))}
             </div>
           ) : (
-            <div className="rounded-2xl border border-dashed border-zinc-800 bg-zinc-900/40 p-8 text-center">
-              <p className="text-sm text-zinc-400">
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center dark:border-zinc-800 dark:bg-zinc-900/40">
+              <p className="text-sm text-slate-900 dark:text-white">
                 Todavía no participás en ningún partido.
               </p>
             </div>
@@ -88,7 +396,7 @@ export default function Partidos() {
 
         <div className="mb-8 h-px w-full bg-zinc-800" />
 
-        {/* Partidos Disponibles */}
+        {/* Partidos disponibles */}
         <section>
           <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-2xl font-bold sm:text-3xl">
@@ -108,18 +416,71 @@ export default function Partidos() {
                   key={match.id}
                   match={match}
                   variant="available"
+                  onJoin={handleJoin}
+                  onDetails={setPartidoDetalle}
                 />
               ))}
             </div>
           ) : (
             <div className="rounded-2xl border border-dashed border-zinc-800 bg-zinc-900/40 p-8 text-center">
               <p className="text-sm text-zinc-400">
-                No encontramos partidos para “{query}”.
+                {query
+                  ? `No encontramos partidos para “${query}”.`
+                  : "No hay partidos disponibles."}
               </p>
             </div>
           )}
         </section>
       </main>
+
+      {/* Detalles */}
+      {partidoDetalle && (
+        <MatchDetailsModal
+          match={partidoDetalle}
+          onClose={() =>
+            setPartidoDetalle(null)
+          }
+          canInvite={
+            puedeInvitarDesdeDetalles
+          }
+          onInvite={handleOpenInvite}
+        />
+      )}
+
+      {/* Invitar amigo */}
+      {partidoAInvitar && (
+        <InviteFriendModal
+          match={partidoAInvitar}
+          friends={FRIENDS_MOCK}
+          invitedIds={invitedIds}
+          onInvite={handleInviteFriend}
+          onClose={() =>
+            setPartidoAInvitar(null)
+          }
+        />
+      )}
+
+      {/* Contraseña */}
+      {partidoPrivado && (
+        <JoinPrivateMatchModal
+          match={partidoPrivado}
+          onClose={() =>
+            setPartidoPrivado(null)
+          }
+          onConfirm={handleConfirmPrivate}
+        />
+      )}
+
+      {/* Abandonar */}
+      {partidoAAbandonar && (
+        <LeaveMatchModal
+          match={partidoAAbandonar}
+          onClose={() =>
+            setPartidoAAbandonar(null)
+          }
+          onConfirm={handleConfirmLeave}
+        />
+      )}
 
       <BottomNavbar />
     </div>

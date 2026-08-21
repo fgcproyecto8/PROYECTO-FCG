@@ -10,7 +10,9 @@ export default function SearchBar({ value, onChange }) {
         />
 
         <input
-          type="text"
+          type="search"
+          name="busqueda-partidos"
+          autoComplete="off"
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="Buscar por zona o nombre..."

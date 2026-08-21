@@ -17,9 +17,18 @@ import Card from "../components/Card";
 import Input from "../components/Input";
 import CanchaSelector from "../components/CanchaSelector";
 import HorarioSelector from "../components/HorarioSelector";
+import RatingBadge from "../components/RatingBadge";
 
-import { CANCHAS_MOCK, formatPrecio } from "../data/canchas";
-import { MY_MATCHES } from "../data/partidos";
+import {
+  CANCHAS_MOCK,
+  formatPrecio,
+} from "../data/canchas";
+
+import {
+  MY_MATCHES,
+  AVAILABLE_MATCHES,
+  getCurrentPlayer,
+} from "../data/partidos";
 
 export default function CrearPartido() {
   const navigate = useNavigate();
@@ -34,13 +43,16 @@ export default function CrearPartido() {
     password: "",
   });
 
-  const [horarioSeleccionado, setHorarioSeleccionado] = useState(null);
+  const [horarioSeleccionado, setHorarioSeleccionado] =
+    useState(null);
+
   const [esPublico, setEsPublico] = useState(true);
   const [errores, setErrores] = useState({});
   const [mensaje, setMensaje] = useState("");
 
   const cancha = useMemo(
-    () => CANCHAS_MOCK.find((c) => c.id === canchaId) || null,
+    () =>
+      CANCHAS_MOCK.find((c) => c.id === canchaId) || null,
     [canchaId]
   );
 
@@ -78,6 +90,13 @@ export default function CrearPartido() {
     }
 
     return null;
+  };
+
+  const normalizarNombre = (nombre) => {
+    return nombre
+      .trim()
+      .replace(/\s+/g, " ")
+      .toLowerCase();
   };
 
   const setCampo = (campo, valor) => {
@@ -143,11 +162,57 @@ export default function CrearPartido() {
     }
 
     if (!form.nombre.trim()) {
-      nuevosErrores.nombre = "Ingresá un nombre para el partido.";
+      nuevosErrores.nombre =
+        "Ingresá un nombre para el partido.";
+    } else {
+      const nombreNuevo = normalizarNombre(form.nombre);
+
+      const nombreYaExiste = [
+        ...MY_MATCHES,
+        ...AVAILABLE_MATCHES,
+      ].some(
+        (partido) =>
+          normalizarNombre(partido.name) === nombreNuevo
+      );
+
+      if (nombreYaExiste) {
+        nuevosErrores.nombre =
+          "Ya existe un partido con ese nombre.";
+      }
     }
 
     if (!horarioSeleccionado) {
-      nuevosErrores.horario = "Seleccioná un horario disponible.";
+      nuevosErrores.horario =
+        "Seleccioná un horario disponible.";
+    }
+
+    if (cancha && horarioSeleccionado) {
+      const fecha =
+        horarioSeleccionado.dia === "hoy"
+          ? "Hoy"
+          : "Mañana";
+
+      const horarioYaOcupado = [
+        ...MY_MATCHES,
+        ...AVAILABLE_MATCHES,
+      ].some((partido) => {
+        const mismaCancha =
+          partido.canchaId === cancha.id;
+
+        const mismoDia =
+          partido.dayKey === horarioSeleccionado.dia ||
+          partido.date === fecha;
+
+        const mismaHora =
+          partido.time === horarioSeleccionado.hora;
+
+        return mismaCancha && mismoDia && mismaHora;
+      });
+
+      if (horarioYaOcupado) {
+        nuevosErrores.horario =
+          "Ese horario ya está ocupado por otro partido.";
+      }
     }
 
     if (!esPublico && !form.password.trim()) {
@@ -174,7 +239,7 @@ export default function CrearPartido() {
       cupos && cancha.precio
         ? Math.round(cancha.precio / cupos)
         : 0;
-
+    const creador = getCurrentPlayer();
     const nuevoPartido = {
       id: `creado-${Date.now()}`,
       image: cancha.imagen,
@@ -182,25 +247,54 @@ export default function CrearPartido() {
       fieldName: cancha.nombre,
       type: esPublico ? "Público" : "Privado",
       status: "Pendiente",
+
       date:
         horarioSeleccionado.dia === "hoy"
           ? "Hoy"
           : "Mañana",
+
+      dayKey: horarioSeleccionado.dia,
+
       time: horarioSeleccionado.hora,
       address: cancha.direccion,
+
       players: 1,
       maxPlayers: cupos,
-      pricePerPlayer: precioPorJugador.toLocaleString("es-AR"),
-      totalPrice: Number(cancha.precio).toLocaleString("es-AR"),
+      playersList: [creador],
+
+      pricePerPlayer:
+        precioPorJugador.toLocaleString("es-AR"),
+
+      totalPrice:
+        Number(cancha.precio).toLocaleString("es-AR"),
 
       descripcion: form.descripcion.trim(),
-      password: esPublico ? null : form.password.trim(),
+
+      password: esPublico
+        ? null
+        : form.password.trim(),
+
       canchaId: cancha.id,
+      modalidad,
     };
 
-    MY_MATCHES.unshift(nuevoPartido);
+    MY_MATCHES.unshift({
+      ...nuevoPartido,
+      playersList: [...nuevoPartido.playersList],
+    });
 
-    console.log("Partido creado (mock):", nuevoPartido);
+    AVAILABLE_MATCHES.unshift({
+      ...nuevoPartido,
+      playersList: [...nuevoPartido.playersList],
+    });
+
+    const horariosDelDia =
+      cancha.horarios?.[horarioSeleccionado.dia] || [];
+
+    cancha.horarios[horarioSeleccionado.dia] =
+      horariosDelDia.filter(
+        (hora) => hora !== horarioSeleccionado.hora
+      );
 
     setMensaje("¡Partido creado correctamente!");
 
@@ -214,18 +308,16 @@ export default function CrearPartido() {
       <Header />
 
       <main className="mx-auto w-full max-w-3xl px-4 pb-32 pt-6">
-        {/* Volver */}
         <button
           type="button"
-          onClick={() => navigate("/partidos")}
+          onClick={() => navigate(-1)}
           className="mb-4 inline-flex items-center gap-2 text-sm text-slate-500 transition hover:text-emerald-500 dark:text-slate-400"
         >
           <ArrowLeft className="h-4 w-4" />
           Volver
         </button>
 
-        {/* Título */}
-        <h1 className="text-4xl font-extrabold tracking-tight">
+        <h1 className="text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white">
           Crear Partido
         </h1>
 
@@ -233,7 +325,6 @@ export default function CrearPartido() {
           Configurá los detalles y armá tu equipo.
         </p>
 
-        {/* Selección de cancha */}
         <Card
           icon={CalendarDays}
           title="Selección de Cancha"
@@ -249,6 +340,22 @@ export default function CrearPartido() {
             onSelect={seleccionarCancha}
           />
 
+          {cancha && (
+            <div className="mt-4 flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/60">
+              <div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Cancha seleccionada
+                </p>
+
+                <p className="mt-0.5 text-sm font-semibold text-slate-900 dark:text-white">
+                  {cancha.nombre}
+                </p>
+              </div>
+
+              <RatingBadge canchaId={cancha.id} />
+            </div>
+          )}
+
           {errores.cancha && (
             <p className="mt-2 text-xs text-red-500">
               {errores.cancha}
@@ -256,7 +363,6 @@ export default function CrearPartido() {
           )}
         </Card>
 
-        {/* Detalles */}
         <Card
           icon={SlidersHorizontal}
           title="Detalles del Partido"
@@ -273,7 +379,6 @@ export default function CrearPartido() {
               error={errores.nombre}
             />
 
-            {/* Horarios */}
             <div>
               <p className="mb-3 text-sm font-medium text-slate-700 dark:text-slate-300">
                 Horarios disponibles
@@ -310,7 +415,6 @@ export default function CrearPartido() {
               )}
             </div>
 
-            {/* Ubicación */}
             <div>
               <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
                 Ubicación
@@ -329,7 +433,6 @@ export default function CrearPartido() {
               </div>
             </div>
 
-            {/* Tipo / Precio */}
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
@@ -354,7 +457,6 @@ export default function CrearPartido() {
               </div>
             </div>
 
-            {/* Descripción */}
             <div>
               <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
                 Descripción (Opcional)
@@ -373,11 +475,10 @@ export default function CrearPartido() {
           </div>
         </Card>
 
-        {/* Público / Privado */}
         <Card className="mt-5">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <h3 className="flex items-center gap-2 text-lg font-bold">
+              <h3 className="flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-white">
                 {esPublico ? (
                   <Eye className="h-5 w-5 text-emerald-500" />
                 ) : (
@@ -441,19 +542,19 @@ export default function CrearPartido() {
           )}
         </Card>
 
-        {/* Resumen */}
-        <Card
-          title="Resumen"
-          className="mt-5"
-        >
+        <Card title="Resumen" className="mt-5">
           <dl className="text-sm">
             <div className="flex items-center justify-between gap-4 py-1.5">
               <dt className="text-slate-500 dark:text-slate-400">
                 Cancha
               </dt>
 
-              <dd className="text-right font-medium">
-                {cancha?.nombre || "—"}
+              <dd className="flex items-center gap-2 text-right font-medium">
+                <span>{cancha?.nombre || "—"}</span>
+
+                {cancha && (
+                  <RatingBadge canchaId={cancha.id} />
+                )}
               </dd>
             </div>
 
