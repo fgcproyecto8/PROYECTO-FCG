@@ -18,6 +18,7 @@ import {
 import {
   MY_MATCHES,
   AVAILABLE_MATCHES,
+  getCurrentPlayer,
 } from "../data/partidos";
 
 export default function Home() {
@@ -39,36 +40,26 @@ export default function Home() {
   }, [navigate]);
 
   const user = JSON.parse(localStorage.getItem("user"));
-  const username = user?.username || user?.email || "Jugador";
+  const username =
+    user?.username || user?.email || "Jugador";
 
   const liberarHorario = (partido) => {
-    if (!partido.canchaId) {
-      return;
-    }
+    if (!partido.canchaId) return;
 
     const cancha = CANCHAS_MOCK.find(
       (item) => item.id === partido.canchaId
     );
 
-    if (!cancha) {
-      return;
-    }
+    if (!cancha) return;
 
     let dia = partido.dayKey;
 
     if (!dia) {
-      if (partido.date === "Hoy") {
-        dia = "hoy";
-      }
-
-      if (partido.date === "Mañana") {
-        dia = "manana";
-      }
+      if (partido.date === "Hoy") dia = "hoy";
+      if (partido.date === "Mañana") dia = "manana";
     }
 
-    if (!dia || !cancha.horarios?.[dia]) {
-      return;
-    }
+    if (!dia || !cancha.horarios?.[dia]) return;
 
     if (!cancha.horarios[dia].includes(partido.time)) {
       cancha.horarios[dia].push(partido.time);
@@ -88,15 +79,27 @@ export default function Home() {
       (item) => item.id === partido.id
     );
 
-    if (yaEstaEnMisPartidos) {
-      return;
+    if (yaEstaEnMisPartidos) return;
+
+    const usuarioActual = getCurrentPlayer();
+
+    const yaEstaEnLista = partido.playersList?.some(
+      (player) => player.id === usuarioActual.id
+    );
+
+    if (!yaEstaEnLista) {
+      partido.playersList = [
+        ...(partido.playersList || []),
+        usuarioActual,
+      ];
     }
 
-    partido.players += 1;
+    partido.players = partido.playersList.length;
 
     MY_MATCHES.unshift({
       ...partido,
       status: "Confirmado",
+      playersList: [...partido.playersList],
     });
 
     setJoinedMatches((prev) =>
@@ -111,9 +114,7 @@ export default function Home() {
       (partido) => partido.id === match.id
     );
 
-    if (!partidoOriginal) {
-      return;
-    }
+    if (!partidoOriginal) return;
 
     const esPrivado =
       partidoOriginal.type?.trim().toLowerCase() ===
@@ -128,16 +129,15 @@ export default function Home() {
   };
 
   const handleConfirmPrivate = (passwordIngresada) => {
-    if (!partidoPrivado) {
-      return false;
-    }
+    if (!partidoPrivado) return false;
 
-    if (passwordIngresada !== partidoPrivado.password) {
+    if (
+      passwordIngresada !== partidoPrivado.password
+    ) {
       return false;
     }
 
     agregarAMisPartidos(partidoPrivado);
-
     setPartidoPrivado(null);
 
     return true;
@@ -148,26 +148,42 @@ export default function Home() {
       (item) => item.id === match.id
     );
 
-    if (!partido) {
-      return;
-    }
+    if (!partido) return;
 
     setPartidoAAbandonar(partido);
   };
 
-  const handleConfirmLeave = () => {
-    if (!partidoAAbandonar) {
-      return;
+  const quitarUsuario = (partido) => {
+    const usuarioActual = getCurrentPlayer();
+
+    const listaActual = [
+      ...(partido.playersList || []),
+    ];
+
+    let nuevaLista = listaActual.filter(
+      (player) => player.id !== usuarioActual.id
+    );
+
+    if (
+      nuevaLista.length === listaActual.length &&
+      nuevaLista.length > 0
+    ) {
+      nuevaLista = nuevaLista.slice(0, -1);
     }
+
+    partido.playersList = nuevaLista;
+    partido.players = nuevaLista.length;
+  };
+
+  const handleConfirmLeave = () => {
+    if (!partidoAAbandonar) return;
 
     const indiceMisPartidos = MY_MATCHES.findIndex(
       (partido) =>
         partido.id === partidoAAbandonar.id
     );
 
-    if (indiceMisPartidos === -1) {
-      return;
-    }
+    if (indiceMisPartidos === -1) return;
 
     const [partidoEliminado] = MY_MATCHES.splice(
       indiceMisPartidos,
@@ -178,41 +194,30 @@ export default function Home() {
       (partido) => partido.id === partidoEliminado.id
     );
 
-    /*
-     * El partido ya estaba disponible para otros usuarios.
-     */
     if (indiceDisponible !== -1) {
-      AVAILABLE_MATCHES[indiceDisponible].players = Math.max(
-        AVAILABLE_MATCHES[indiceDisponible].players - 1,
-        0
-      );
+      const partidoDisponible =
+        AVAILABLE_MATCHES[indiceDisponible];
 
-      /*
-       * Si no queda nadie, el partido desaparece.
-       */
-      if (
-        AVAILABLE_MATCHES[indiceDisponible].players === 0
-      ) {
-        const [partidoBorrado] = AVAILABLE_MATCHES.splice(
-          indiceDisponible,
-          1
-        );
+      quitarUsuario(partidoDisponible);
+
+      if (partidoDisponible.players === 0) {
+        const [partidoBorrado] =
+          AVAILABLE_MATCHES.splice(
+            indiceDisponible,
+            1
+          );
 
         liberarHorario(partidoBorrado);
       }
     } else {
-      /*
-       * Partido que solamente estaba en MY_MATCHES.
-       */
-      const jugadoresRestantes = Math.max(
-        partidoEliminado.players - 1,
-        0
-      );
+      quitarUsuario(partidoEliminado);
 
-      if (jugadoresRestantes > 0) {
+      if (partidoEliminado.players > 0) {
         AVAILABLE_MATCHES.unshift({
           ...partidoEliminado,
-          players: jugadoresRestantes,
+          playersList: [
+            ...(partidoEliminado.playersList || []),
+          ],
         });
       } else {
         liberarHorario(partidoEliminado);
@@ -257,7 +262,6 @@ export default function Home() {
       <Header />
 
       <main>
-        {/* Saludo */}
         <div className="mx-auto max-w-6xl px-5 pt-6">
           <h1 className="text-xl font-semibold text-slate-900 dark:text-white">
             Hola, {username} ⚽

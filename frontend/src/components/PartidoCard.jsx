@@ -4,6 +4,7 @@ import {
   MapPin,
   Users,
   LogOut,
+  Eye,
 } from "lucide-react";
 
 import {
@@ -18,6 +19,7 @@ export default function MatchCard({
   variant = "mine",
   onJoin,
   onLeave,
+  onDetails,
 }) {
   const {
     image,
@@ -34,21 +36,17 @@ export default function MatchCard({
     totalPrice,
   } = match;
 
-  const isFull =
-    players >= maxPlayers;
+  const isFull = players >= maxPlayers;
 
   const spotsLeft = Math.max(
     maxPlayers - players,
     0
   );
 
-  const isLastSpot =
-    spotsLeft === 1;
+  const isLastSpot = spotsLeft === 1;
 
   const estadoPartido =
-    isFull
-      ? "Confirmado"
-      : "Pendiente";
+    isFull ? "Confirmado" : "Pendiente";
 
   return (
     <article className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg dark:border-slate-800 dark:bg-slate-900">
@@ -64,17 +62,11 @@ export default function MatchCard({
 
         {variant === "mine" ? (
           <div className="absolute right-3 top-3">
-            <StatusBadge
-              status={
-                estadoPartido
-              }
-            />
+            <StatusBadge status={estadoPartido} />
           </div>
         ) : (
           <div className="absolute left-3 top-3">
-            <TypeBadge
-              type={type}
-            />
+            <TypeBadge type={type} />
           </div>
         )}
       </div>
@@ -94,22 +86,15 @@ export default function MatchCard({
 
                 {canchaId && (
                   <div className="mt-2">
-                    <RatingBadge
-                      canchaId={
-                        canchaId
-                      }
-                    />
+                    <RatingBadge canchaId={canchaId} />
                   </div>
                 )}
               </div>
             )}
           </div>
 
-          {variant ===
-            "mine" && (
-            <TypeBadge
-              type={type}
-            />
+          {variant === "mine" && (
+            <TypeBadge type={type} />
           )}
         </div>
 
@@ -129,9 +114,7 @@ export default function MatchCard({
               className="text-zinc-500"
             />
 
-            <span>
-              {time} hs
-            </span>
+            <span>{time} hs</span>
           </li>
 
           <li className="flex items-center gap-2">
@@ -149,9 +132,7 @@ export default function MatchCard({
         <div className="flex items-end justify-between gap-2 border-t border-slate-200 pt-3 dark:border-zinc-800">
           <div className="flex items-start gap-2">
             <span className="mt-0.5 rounded-md bg-emerald-500/10 p-1.5 text-emerald-500">
-              <Users
-                size={14}
-              />
+              <Users size={14} />
             </span>
 
             <div>
@@ -162,10 +143,8 @@ export default function MatchCard({
                     : "text-emerald-500"
                 }`}
               >
-                {players}/
-                {maxPlayers}{" "}
-                {variant ===
-                "mine"
+                {players}/{maxPlayers}{" "}
+                {variant === "mine"
                   ? "Jugadores"
                   : ""}
               </p>
@@ -189,57 +168,53 @@ export default function MatchCard({
           <div className="text-right">
             <p className="text-sm font-bold text-emerald-500">
               $
-              {variant ===
-              "mine"
+              {variant === "mine"
                 ? totalPrice
                 : pricePerPlayer}
             </p>
 
             <p className="text-xs text-zinc-500">
-              {variant ===
-              "mine"
+              {variant === "mine"
                 ? "total"
                 : "por jugador"}
             </p>
           </div>
         </div>
 
-        {variant ===
-          "mine" &&
-          onLeave && (
-            <button
-              type="button"
-              onClick={() =>
-                onLeave(
-                  match
-                )
-              }
-              className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-red-500/40 bg-red-500/10 py-2.5 text-sm font-semibold text-red-500 transition hover:bg-red-500 hover:text-white"
-            >
-              <LogOut
-                size={16}
-              />
+        {/* Ver detalles */}
+        <button
+          type="button"
+          onClick={() => onDetails?.(match)}
+          className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-slate-50 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-emerald-500 hover:text-emerald-500 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-200 dark:hover:border-emerald-500 dark:hover:text-emerald-400"
+        >
+          <Eye size={16} />
+          Ver detalles
+        </button>
 
-              Abandonar partido
-            </button>
-          )}
+        {/* Abandonar */}
+        {variant === "mine" && onLeave && (
+          <button
+            type="button"
+            onClick={() => onLeave(match)}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-red-500/40 bg-red-500/10 py-2.5 text-sm font-semibold text-red-500 transition hover:bg-red-500 hover:text-white"
+          >
+            <LogOut size={16} />
+            Abandonar partido
+          </button>
+        )}
 
-        {variant ===
-          "available" && (
+        {/* Unirse */}
+        {variant === "available" && (
           <button
             type="button"
             disabled={isFull}
-            onClick={() =>
-              onJoin?.(
-                match
-              )
-            }
+            onClick={() => onJoin?.(match)}
             className={`w-full rounded-xl border py-2.5 text-sm font-semibold transition ${
               isFull
                 ? "cursor-not-allowed border-zinc-800 bg-zinc-800/50 text-zinc-500"
                 : isLastSpot
                   ? "border-emerald-500 bg-emerald-500 text-zinc-950 hover:bg-emerald-400"
-                  : "border-emerald-500/60 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500 hover:text-zinc-950"
+                  : "border-emerald-500/60 bg-emerald-500 text-zinc-950 hover:bg-emerald-400"
             }`}
           >
             {isFull

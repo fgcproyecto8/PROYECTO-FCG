@@ -9,54 +9,57 @@ import SearchBar from "../components/SearchBar";
 import SectionTitle from "../components/SectionTitle";
 import JoinPrivateMatchModal from "../components/JoinPrivateMatchModal";
 import LeaveMatchModal from "../components/LeaveMatchModal";
+import MatchDetailsModal from "../components/MatchDetailsModal";
+import InviteFriendModal from "../components/InviteFriendModal";
 
 import { CANCHAS_MOCK } from "../data/canchas";
+import { FRIENDS_MOCK } from "../data/friends";
 
 import {
   MY_MATCHES,
   AVAILABLE_MATCHES,
+  getCurrentPlayer,
 } from "../data/partidos";
 
 export default function Partidos() {
   const navigate = useNavigate();
 
   const [query, setQuery] = useState("");
+
   const [partidoPrivado, setPartidoPrivado] =
     useState(null);
 
   const [partidoAAbandonar, setPartidoAAbandonar] =
     useState(null);
 
+  const [partidoDetalle, setPartidoDetalle] =
+    useState(null);
+
+  const [partidoAInvitar, setPartidoAInvitar] =
+    useState(null);
+
+  const [invitacionesEnviadas, setInvitacionesEnviadas] =
+    useState([]);
+
   const [, forceUpdate] = useState(0);
 
   const liberarHorario = (partido) => {
-    if (!partido.canchaId) {
-      return;
-    }
+    if (!partido.canchaId) return;
 
     const cancha = CANCHAS_MOCK.find(
       (item) => item.id === partido.canchaId
     );
 
-    if (!cancha) {
-      return;
-    }
+    if (!cancha) return;
 
     let dia = partido.dayKey;
 
     if (!dia) {
-      if (partido.date === "Hoy") {
-        dia = "hoy";
-      }
-
-      if (partido.date === "Mañana") {
-        dia = "manana";
-      }
+      if (partido.date === "Hoy") dia = "hoy";
+      if (partido.date === "Mañana") dia = "manana";
     }
 
-    if (!dia || !cancha.horarios?.[dia]) {
-      return;
-    }
+    if (!dia || !cancha.horarios?.[dia]) return;
 
     if (!cancha.horarios[dia].includes(partido.time)) {
       cancha.horarios[dia].push(partido.time);
@@ -72,17 +75,13 @@ export default function Partidos() {
       (partido) => partido.id === match.id
     );
 
-    if (yaEstaEnMisPartidos) {
-      return;
-    }
+    if (yaEstaEnMisPartidos) return;
 
     const partidoOriginal = AVAILABLE_MATCHES.find(
       (partido) => partido.id === match.id
     );
 
-    if (!partidoOriginal) {
-      return;
-    }
+    if (!partidoOriginal) return;
 
     if (
       partidoOriginal.players >=
@@ -91,13 +90,27 @@ export default function Partidos() {
       return;
     }
 
-    partidoOriginal.players += 1;
+    const usuarioActual = getCurrentPlayer();
 
-    const partidoUnido = {
+    const yaEstaEnLista =
+      partidoOriginal.playersList?.some(
+        (player) => player.id === usuarioActual.id
+      );
+
+    if (!yaEstaEnLista) {
+      partidoOriginal.playersList = [
+        ...(partidoOriginal.playersList || []),
+        usuarioActual,
+      ];
+    }
+
+    partidoOriginal.players =
+      partidoOriginal.playersList.length;
+
+    MY_MATCHES.unshift({
       ...partidoOriginal,
-    };
-
-    MY_MATCHES.unshift(partidoUnido);
+      playersList: [...partidoOriginal.playersList],
+    });
 
     forceUpdate((prev) => prev + 1);
   };
@@ -114,10 +127,10 @@ export default function Partidos() {
     agregarAMisPartidos(match);
   };
 
-  const handleConfirmPrivate = (passwordIngresada) => {
-    if (!partidoPrivado) {
-      return false;
-    }
+  const handleConfirmPrivate = (
+    passwordIngresada
+  ) => {
+    if (!partidoPrivado) return false;
 
     if (
       passwordIngresada !== partidoPrivado.password
@@ -126,7 +139,6 @@ export default function Partidos() {
     }
 
     agregarAMisPartidos(partidoPrivado);
-
     setPartidoPrivado(null);
 
     return true;
@@ -136,19 +148,40 @@ export default function Partidos() {
     setPartidoAAbandonar(match);
   };
 
-  const handleConfirmLeave = () => {
-    if (!partidoAAbandonar) {
-      return;
+  const quitarUsuario = (partido) => {
+    const usuarioActual = getCurrentPlayer();
+
+    const listaActual = [
+      ...(partido.playersList || []),
+    ];
+
+    let nuevaLista = listaActual.filter(
+      (player) => player.id !== usuarioActual.id
+    );
+
+    /*
+     * Fallback temporal para partidos mock.
+     */
+    if (
+      nuevaLista.length === listaActual.length &&
+      nuevaLista.length > 0
+    ) {
+      nuevaLista = nuevaLista.slice(0, -1);
     }
+
+    partido.playersList = nuevaLista;
+    partido.players = nuevaLista.length;
+  };
+
+  const handleConfirmLeave = () => {
+    if (!partidoAAbandonar) return;
 
     const indiceMisPartidos = MY_MATCHES.findIndex(
       (partido) =>
         partido.id === partidoAAbandonar.id
     );
 
-    if (indiceMisPartidos === -1) {
-      return;
-    }
+    if (indiceMisPartidos === -1) return;
 
     const [partidoEliminado] = MY_MATCHES.splice(
       indiceMisPartidos,
@@ -161,22 +194,13 @@ export default function Partidos() {
           partido.id === partidoEliminado.id
       );
 
-    /*
-     * El partido ya existe para otros usuarios.
-     */
     if (indiceDisponible !== -1) {
-      AVAILABLE_MATCHES[indiceDisponible].players =
-        Math.max(
-          AVAILABLE_MATCHES[indiceDisponible].players - 1,
-          0
-        );
+      const partidoDisponible =
+        AVAILABLE_MATCHES[indiceDisponible];
 
-      /*
-       * Sin jugadores = el partido desaparece.
-       */
-      if (
-        AVAILABLE_MATCHES[indiceDisponible].players === 0
-      ) {
+      quitarUsuario(partidoDisponible);
+
+      if (partidoDisponible.players === 0) {
         const [partidoBorrado] =
           AVAILABLE_MATCHES.splice(
             indiceDisponible,
@@ -186,19 +210,14 @@ export default function Partidos() {
         liberarHorario(partidoBorrado);
       }
     } else {
-      /*
-       * Partido que anteriormente solamente estaba
-       * dentro de MY_MATCHES.
-       */
-      const jugadoresRestantes = Math.max(
-        partidoEliminado.players - 1,
-        0
-      );
+      quitarUsuario(partidoEliminado);
 
-      if (jugadoresRestantes > 0) {
+      if (partidoEliminado.players > 0) {
         AVAILABLE_MATCHES.unshift({
           ...partidoEliminado,
-          players: jugadoresRestantes,
+          playersList: [
+            ...(partidoEliminado.playersList || []),
+          ],
         });
       } else {
         liberarHorario(partidoEliminado);
@@ -209,6 +228,76 @@ export default function Partidos() {
 
     forceUpdate((prev) => prev + 1);
   };
+
+  /*
+   * Abrir modal de invitación.
+   */
+  const handleOpenInvite = (match) => {
+    const pertenece = MY_MATCHES.some(
+      (partido) => partido.id === match.id
+    );
+
+    const estaLleno =
+      match.players >= match.maxPlayers;
+
+    if (!pertenece || estaLleno) {
+      return;
+    }
+
+    setPartidoAInvitar(match);
+  };
+
+  /*
+   * Crear invitación mock.
+   *
+   * IMPORTANTE:
+   * Esto NO agrega al amigo al partido.
+   */
+  const handleInviteFriend = (friend) => {
+    if (!partidoAInvitar) {
+      return;
+    }
+
+    const usuarioActual = getCurrentPlayer();
+
+    const yaFueInvitado =
+      invitacionesEnviadas.some(
+        (invitacion) =>
+          invitacion.matchId === partidoAInvitar.id &&
+          invitacion.toUserId === friend.id &&
+          invitacion.status === "pending"
+      );
+
+    if (yaFueInvitado) {
+      return;
+    }
+
+    const nuevaInvitacion = {
+      id: `invitacion-${Date.now()}-${friend.id}`,
+      matchId: partidoAInvitar.id,
+      fromUserId: usuarioActual.id,
+      toUserId: friend.id,
+      status: "pending",
+    };
+
+    setInvitacionesEnviadas((prev) => [
+      ...prev,
+      nuevaInvitacion,
+    ]);
+  };
+
+  const invitedIds = partidoAInvitar
+    ? invitacionesEnviadas
+        .filter(
+          (invitacion) =>
+            invitacion.matchId ===
+              partidoAInvitar.id &&
+            invitacion.status === "pending"
+        )
+        .map(
+          (invitacion) => invitacion.toUserId
+        )
+    : [];
 
   const partidosDisponibles = useMemo(() => {
     const idsMisPartidos = new Set(
@@ -237,6 +326,15 @@ export default function Partidos() {
         match.address.toLowerCase().includes(term)
     );
   }, [query, partidosDisponibles]);
+
+  const puedeInvitarDesdeDetalles =
+    partidoDetalle &&
+    MY_MATCHES.some(
+      (partido) =>
+        partido.id === partidoDetalle.id
+    ) &&
+    partidoDetalle.players <
+      partidoDetalle.maxPlayers;
 
   return (
     <div className="min-h-screen bg-white pb-24 dark:bg-slate-950">
@@ -283,6 +381,7 @@ export default function Partidos() {
                   match={match}
                   variant="mine"
                   onLeave={handleLeave}
+                  onDetails={setPartidoDetalle}
                 />
               ))}
             </div>
@@ -297,7 +396,7 @@ export default function Partidos() {
 
         <div className="mb-8 h-px w-full bg-zinc-800" />
 
-        {/* Partidos Disponibles */}
+        {/* Partidos disponibles */}
         <section>
           <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-2xl font-bold sm:text-3xl">
@@ -318,6 +417,7 @@ export default function Partidos() {
                   match={match}
                   variant="available"
                   onJoin={handleJoin}
+                  onDetails={setPartidoDetalle}
                 />
               ))}
             </div>
@@ -333,6 +433,34 @@ export default function Partidos() {
         </section>
       </main>
 
+      {/* Detalles */}
+      {partidoDetalle && (
+        <MatchDetailsModal
+          match={partidoDetalle}
+          onClose={() =>
+            setPartidoDetalle(null)
+          }
+          canInvite={
+            puedeInvitarDesdeDetalles
+          }
+          onInvite={handleOpenInvite}
+        />
+      )}
+
+      {/* Invitar amigo */}
+      {partidoAInvitar && (
+        <InviteFriendModal
+          match={partidoAInvitar}
+          friends={FRIENDS_MOCK}
+          invitedIds={invitedIds}
+          onInvite={handleInviteFriend}
+          onClose={() =>
+            setPartidoAInvitar(null)
+          }
+        />
+      )}
+
+      {/* Contraseña */}
       {partidoPrivado && (
         <JoinPrivateMatchModal
           match={partidoPrivado}
@@ -343,6 +471,7 @@ export default function Partidos() {
         />
       )}
 
+      {/* Abandonar */}
       {partidoAAbandonar && (
         <LeaveMatchModal
           match={partidoAAbandonar}

@@ -27,6 +27,7 @@ import {
 import {
   MY_MATCHES,
   AVAILABLE_MATCHES,
+  getCurrentPlayer,
 } from "../data/partidos";
 
 export default function CrearPartido() {
@@ -238,7 +239,7 @@ export default function CrearPartido() {
       cupos && cancha.precio
         ? Math.round(cancha.precio / cupos)
         : 0;
-
+    const creador = getCurrentPlayer();
     const nuevoPartido = {
       id: `creado-${Date.now()}`,
       image: cancha.imagen,
@@ -259,6 +260,7 @@ export default function CrearPartido() {
 
       players: 1,
       maxPlayers: cupos,
+      playersList: [creador],
 
       pricePerPlayer:
         precioPorJugador.toLocaleString("es-AR"),
@@ -278,10 +280,12 @@ export default function CrearPartido() {
 
     MY_MATCHES.unshift({
       ...nuevoPartido,
+      playersList: [...nuevoPartido.playersList],
     });
 
     AVAILABLE_MATCHES.unshift({
       ...nuevoPartido,
+      playersList: [...nuevoPartido.playersList],
     });
 
     const horariosDelDia =
