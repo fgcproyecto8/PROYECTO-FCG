@@ -42,6 +42,8 @@ class RegisterSerializer(serializers.Serializer):
     )
 
 
+
+
     def validate(self, data):
 
         if data["password"] != data["confirm_password"]:
@@ -128,3 +130,9 @@ class RegisterSerializer(serializers.Serializer):
             )
 
         return user
+
+class LoginSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    password = serializers.CharField(
+        write_only=True
+    )
