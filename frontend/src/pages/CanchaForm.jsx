@@ -3,6 +3,7 @@ import {
   useMemo,
   useState,
 } from "react";
+
 import {
   useNavigate,
   useParams,
@@ -30,6 +31,7 @@ import {
   obtenerPromedioCancha,
 } from "../data/calificaciones";
 
+
 function obtenerUsuario() {
   try {
     return (
@@ -42,32 +44,6 @@ function obtenerUsuario() {
   }
 }
 
-function usuarioEsOwner(usuario) {
-  const rol = usuario?.role
-    ?.trim()
-    .toLowerCase();
-
-  return [
-    "owner",
-    "dueño",
-    "dueno",
-    "duenio",
-    "dueño de cancha",
-    "dueno de cancha",
-    "duenio de cancha",
-  ].includes(rol);
-}
-
-function usuarioEsJugador(usuario) {
-  const rol = usuario?.role
-    ?.trim()
-    .toLowerCase();
-
-  return [
-    "player",
-    "jugador",
-  ].includes(rol);
-}
 
 export default function CanchaForm() {
   const { id } = useParams();
@@ -75,17 +51,37 @@ export default function CanchaForm() {
 
   const usuario = obtenerUsuario();
 
+  const rol = usuario?.role
+    ?.trim()
+    .toLowerCase();
+
+  const estado = usuario?.status
+    ?.trim()
+    .toLowerCase();
+
+  const esAdmin =
+    rol === "admin";
+
   const esOwner =
-    usuarioEsOwner(usuario);
+    rol === "owner";
 
   const esJugador =
-    usuarioEsJugador(usuario);
+    rol === "player";
+
+  const ownerAprobado =
+    esOwner &&
+    estado === "approved";
+
+  const puedeGestionar =
+    esAdmin ||
+    ownerAprobado;
 
   const emailUsuario = usuario?.email
     ?.trim()
     .toLowerCase();
 
   const esNueva = !id;
+
 
   const inicial = useMemo(() => {
     if (!id) {
@@ -110,15 +106,16 @@ export default function CanchaForm() {
           ...encontrada.horarios.hoy,
         ],
         manana: [
-          ...encontrada.horarios
-            .manana,
+          ...encontrada.horarios.manana,
         ],
       },
     };
   }, [id]);
 
+
   const [form, setForm] =
     useState(inicial);
+
 
   const [
     calificacionUsuario,
@@ -134,6 +131,7 @@ export default function CanchaForm() {
     );
   });
 
+
   const [
     promedio,
     setPromedio,
@@ -145,25 +143,29 @@ export default function CanchaForm() {
     return obtenerPromedioCancha(id);
   });
 
+
   const emailDueno =
     form.ownerEmail
       ?.trim()
       .toLowerCase();
 
+
   const esPropietario =
     !esNueva &&
-    esOwner &&
+    ownerAprobado &&
     emailUsuario &&
     emailDueno === emailUsuario;
 
+
   const puedeEditar = esNueva
-    ? esOwner
-    : esPropietario;
+    ? puedeGestionar
+    : esAdmin || esPropietario;
+
 
   useEffect(() => {
     if (
       esNueva &&
-      !esOwner
+      !puedeGestionar
     ) {
       navigate("/canchas", {
         replace: true,
@@ -171,9 +173,10 @@ export default function CanchaForm() {
     }
   }, [
     esNueva,
-    esOwner,
+    puedeGestionar,
     navigate,
   ]);
+
 
   const setCampo =
     (campo) => (e) => {
@@ -186,6 +189,7 @@ export default function CanchaForm() {
         [campo]: e.target.value,
       }));
     };
+
 
   const toggleHorario =
     (dia) => (hora) => {
@@ -218,6 +222,7 @@ export default function CanchaForm() {
         };
       });
     };
+
 
   const agregarHorario =
     (dia) => (hora) => {
@@ -256,6 +261,7 @@ export default function CanchaForm() {
       });
     };
 
+
   const handleImagen = (url) => {
     if (!puedeEditar) {
       return;
@@ -266,6 +272,7 @@ export default function CanchaForm() {
       imagen: url,
     }));
   };
+
 
   const handleCalificar = (
     valor
@@ -291,6 +298,7 @@ export default function CanchaForm() {
     );
   };
 
+
   const handleSubmit = (e) => {
     e.preventDefault();
 
@@ -302,6 +310,7 @@ export default function CanchaForm() {
       const nuevaCancha = {
         ...form,
         id: Date.now(),
+
         ownerEmail:
           usuario.email,
       };
@@ -320,6 +329,7 @@ export default function CanchaForm() {
       if (indice !== -1) {
         CANCHAS_MOCK[indice] = {
           ...form,
+
           ownerEmail:
             CANCHAS_MOCK[
               indice
@@ -330,6 +340,7 @@ export default function CanchaForm() {
 
     navigate("/canchas");
   };
+
 
   return (
     <div className="min-h-screen bg-white px-4 pb-28 pt-6 text-slate-900 dark:bg-slate-950 dark:text-white">
@@ -353,6 +364,7 @@ export default function CanchaForm() {
             : "Podés consultar la información de esta cancha."}
         </p>
 
+
         {puedeEditar ? (
           <ImageUploader
             value={form.imagen}
@@ -372,6 +384,7 @@ export default function CanchaForm() {
           </div>
         )}
 
+
         <Campo label="Nombre de la Cancha">
           <IconInput
             icon={CalendarDays}
@@ -385,6 +398,7 @@ export default function CanchaForm() {
             }
           />
         </Campo>
+
 
         <Campo label="Dirección">
           <IconInput
@@ -401,6 +415,7 @@ export default function CanchaForm() {
             }
           />
         </Campo>
+
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Campo label="Teléfono">
@@ -437,6 +452,7 @@ export default function CanchaForm() {
           </Campo>
         </div>
 
+
         <h2 className="mt-6 text-lg font-extrabold text-slate-900 dark:text-white">
           Horarios Disponibles
         </h2>
@@ -446,6 +462,7 @@ export default function CanchaForm() {
             ? "Tocá para activar o desactivar horas. También podés agregar nuevos horarios con el botón +."
             : "Horarios disponibles de la cancha."}
         </p>
+
 
         <HorarioChips
           titulo="HOY"
@@ -466,8 +483,7 @@ export default function CanchaForm() {
         <HorarioChips
           titulo="MAÑANA"
           seleccionados={
-            form.horarios
-              .manana
+            form.horarios.manana
           }
           onToggle={toggleHorario(
             "manana"
@@ -480,6 +496,7 @@ export default function CanchaForm() {
           }
         />
 
+
         {!esNueva && (
           <div className="mt-8 border-t border-slate-200 pt-6 dark:border-slate-800">
             <h2 className="text-lg font-extrabold text-slate-900 dark:text-white">
@@ -491,12 +508,11 @@ export default function CanchaForm() {
 
               <span className="text-lg font-bold text-slate-900 dark:text-white">
                 {promedio !== null
-                  ? promedio.toFixed(
-                      1
-                    )
+                  ? promedio.toFixed(1)
                   : "Sin calificar"}
               </span>
             </div>
+
 
             {esJugador && (
               <div className="mt-5">
@@ -505,20 +521,10 @@ export default function CanchaForm() {
                 </p>
 
                 <div className="flex items-center gap-2">
-                  {[
-                    1,
-                    2,
-                    3,
-                    4,
-                    5,
-                  ].map(
-                    (
-                      valor
-                    ) => (
+                  {[1, 2, 3, 4, 5].map(
+                    (valor) => (
                       <button
-                        key={
-                          valor
-                        }
+                        key={valor}
                         type="button"
                         onClick={() =>
                           handleCalificar(
@@ -545,6 +551,7 @@ export default function CanchaForm() {
           </div>
         )}
 
+
         {puedeEditar && (
           <button
             type="submit"
@@ -555,6 +562,7 @@ export default function CanchaForm() {
               : "Confirmar Cambios"}
           </button>
         )}
+
 
         <button
           type="button"
@@ -572,6 +580,7 @@ export default function CanchaForm() {
   );
 }
 
+
 function Campo({
   label,
   children,
@@ -586,6 +595,7 @@ function Campo({
     </div>
   );
 }
+
 
 function IconInput({
   icon: Icon,

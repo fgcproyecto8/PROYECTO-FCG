@@ -20,6 +20,8 @@ import InfoRow from "../components/InfoRow";
 import OptionPill from "../components/OptionPill";
 import Avatar from "../components/Avatar";
 
+import { logoutUser } from "../services/api.js";
+
 const POSITIONS = [
   "Delantero",
   "Mediocampista",
@@ -72,6 +74,25 @@ export default function Profile() {
   const saveChanges = () => {
     setProfile(draft);
     setIsEditing(false);
+  };
+
+  const handleLogout = async () => {
+    const token = localStorage.getItem("token");
+
+    try {
+      if (token) {
+        await logoutUser(token);
+      }
+    } catch (error) {
+      console.error("Error al cerrar sesión:", error);
+    } finally {
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+
+      navigate("/login", {
+        replace: true,
+      });
+    }
   };
 
   const data = isEditing ? draft : profile;
@@ -137,6 +158,7 @@ export default function Profile() {
               <ChevronRight size={17} />
             </button>
           </div>
+
           <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-3">
             {/* Información personal */}
             <Card icon={User} title="Información personal" className="h-fit">
@@ -165,7 +187,9 @@ export default function Profile() {
                     "
                   />
                 ) : (
-                  <h2 className="text-2xl font-bold">{data.fullName}</h2>
+                  <h2 className="text-2xl font-bold">
+                    {data.fullName}
+                  </h2>
                 )}
 
                 {/* El nombre de usuario nunca es editable */}
@@ -198,8 +222,6 @@ export default function Profile() {
                   ariaLabel="Teléfono"
                 />
               </div>
-
-
             </Card>
 
             {/* Estadísticas */}
@@ -312,7 +334,9 @@ export default function Profile() {
                 readOnly={!isEditing}
                 aria-label="Biografía"
                 rows={6}
-                onChange={(event) => setField("bio")(event.target.value)}
+                onChange={(event) =>
+                  setField("bio")(event.target.value)
+                }
                 className={`
                   mt-3 w-full resize-none rounded-xl border
                   border-slate-200 bg-slate-50 p-4
@@ -333,62 +357,61 @@ export default function Profile() {
 
         {/* Acciones generales del perfil */}
         <div className="mx-auto mt-6 max-w-xl space-y-3">
+          {isEditing ? (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={saveChanges}
+                className="
+                  w-full rounded-xl bg-green-500 py-4
+                  font-bold text-neutral-950
+                  transition-colors hover:bg-green-400
+                "
+              >
+                Guardar cambios
+              </button>
 
-  {isEditing ? (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-      <button
-        type="button"
-        onClick={saveChanges}
-        className="
-          w-full rounded-xl bg-green-500 py-4
-          font-bold text-neutral-950
-          transition-colors hover:bg-green-400
-        "
-      >
-        Guardar cambios
-      </button>
+              <button
+                type="button"
+                onClick={cancelEditing}
+                className="
+                  w-full rounded-xl border border-slate-300
+                  bg-white py-4 font-semibold text-slate-700
+                  transition-colors hover:bg-slate-100
+                  dark:border-neutral-700 dark:bg-slate-950
+                  dark:text-neutral-200 dark:hover:bg-neutral-800
+                "
+              >
+                Cancelar
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={startEditing}
+              className="
+                w-full rounded-xl bg-green-500 py-4
+                font-bold text-neutral-950
+                transition-colors hover:bg-green-400
+              "
+            >
+              Editar perfil
+            </button>
+          )}
 
-      <button
-        type="button"
-        onClick={cancelEditing}
-        className="
-          w-full rounded-xl border border-slate-300
-          bg-white py-4 font-semibold text-slate-700
-          transition-colors hover:bg-slate-100
-          dark:border-neutral-700 dark:bg-slate-950
-          dark:text-neutral-200 dark:hover:bg-neutral-800
-        "
-      >
-        Cancelar
-      </button>
-    </div>
-  ) : (
-    <button
-      type="button"
-      onClick={startEditing}
-      className="
-        w-full rounded-xl bg-green-500 py-4
-        font-bold text-neutral-950
-        transition-colors hover:bg-green-400
-      "
-    >
-      Editar perfil
-    </button>
-  )}
-
-  <button
-  type="button"
-  onClick={() => navigate("/login")}
-  className="
-    w-full rounded-xl border border-red-500/60
-    bg-transparent py-4 font-semibold text-red-500
-    transition-colors hover:bg-red-500/10
-    dark:text-red-400
-  "
->
-  Cerrar sesión
-</button>
-</div>
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="
+              w-full rounded-xl border border-red-500/60
+              bg-transparent py-4 font-semibold text-red-500
+              transition-colors hover:bg-red-500/10
+              dark:text-red-400
+            "
+          >
+            Cerrar sesión
+          </button>
+        </div>
       </main>
 
       <BottomNavbar />

@@ -1,12 +1,16 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+
 import FormContainer from "../components/FormContainer.jsx";
 import Input from "../components/Input.jsx";
 import Button from "../components/Button.jsx";
 import ThemeToggle from "../components/ThemeToggle.jsx";
 
+import { registerUser } from "../services/api.js";
+
+
 export default function Register() {
-  const navigate = useNavigate(); // 👈 NUEVO
+  const navigate = useNavigate();
 
   const [form, setForm] = useState({
     username: "",
@@ -20,17 +24,35 @@ export default function Register() {
   });
 
   const [errors, setErrors] = useState({});
+  const [generalError, setGeneralError] = useState("");
+  const [loading, setLoading] = useState(false);
+
 
   const onChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
-    setErrors({ ...errors, [e.target.name]: undefined });
+    setForm({
+      ...form,
+      [e.target.name]: e.target.value,
+    });
+
+    setErrors({
+      ...errors,
+      [e.target.name]: undefined,
+    });
+
+    setGeneralError("");
   };
+
 
   const validate = () => {
     const e = {};
 
-    if (!form.username.trim()) e.username = "Ingresá un nombre de usuario";
-    if (!form.email.includes("@")) e.email = 'El email debe contener "@"';
+    if (!form.username.trim()) {
+      e.username = "Ingresá un nombre de usuario";
+    }
+
+    if (!form.email.includes("@")) {
+      e.email = 'El email debe contener "@"';
+    }
 
     if (form.password.length <= 6) {
       e.password = "La contraseña debe tener más de 6 caracteres";
@@ -40,39 +62,132 @@ export default function Register() {
       e.confirm = "Las contraseñas no coinciden";
     }
 
-    // 🔴 VALIDACIÓN EXTRA PARA DUEÑO
     if (form.role === "owner") {
-      if (!form.cancha.trim()) e.cancha = "Ingresá el nombre de la cancha";
-      if (!form.direccion.trim()) e.direccion = "Ingresá la dirección";
-      if (!form.telefono.trim()) e.telefono = "Ingresá un teléfono";
+      if (!form.cancha.trim()) {
+        e.cancha = "Ingresá el nombre de la cancha";
+      }
+
+      if (!form.direccion.trim()) {
+        e.direccion = "Ingresá la dirección";
+      }
+
+      if (!form.telefono.trim()) {
+        e.telefono = "Ingresá un teléfono";
+      }
     }
 
     return e;
   };
 
-  const onSubmit = (ev) => {
+
+  const onSubmit = async (ev) => {
     ev.preventDefault();
-    const e = validate();
-    setErrors(e);
 
-    if (Object.keys(e).length === 0) {
-      const user = {
-        ...form,
-        status: form.role === "owner" ? "pending" : "approved",
-      };
+    const validationErrors = validate();
 
-      // 💾 guardar usuario
-      localStorage.setItem("user", JSON.stringify(user));
+    setErrors(validationErrors);
+    setGeneralError("");
 
-      // 🚀 ir a HOME
-      navigate("/inicio");
+    if (Object.keys(validationErrors).length > 0) {
+      return;
+    }
+
+    const datos = {
+      username: form.username.trim(),
+      email: form.email.trim(),
+      password: form.password,
+      confirm_password: form.confirm,
+
+      tipo_usuario:
+        form.role === "owner"
+          ? "dueno_cancha"
+          : "jugador",
+    };
+
+    if (form.role === "owner") {
+      datos.nombre_cancha = form.cancha.trim();
+      datos.direccion = form.direccion.trim();
+      datos.telefono = form.telefono.trim();
+    }
+
+    try {
+      setLoading(true);
+
+      await registerUser(datos);
+
+      navigate("/login");
+    } catch (error) {
+      const backendErrors = error.data || {};
+
+      const nuevosErrores = {};
+
+      if (backendErrors.username) {
+        nuevosErrores.username = Array.isArray(backendErrors.username)
+          ? backendErrors.username[0]
+          : backendErrors.username;
+      }
+
+      if (backendErrors.email) {
+        nuevosErrores.email = Array.isArray(backendErrors.email)
+          ? backendErrors.email[0]
+          : backendErrors.email;
+      }
+
+      if (backendErrors.password) {
+        nuevosErrores.password = Array.isArray(backendErrors.password)
+          ? backendErrors.password[0]
+          : backendErrors.password;
+      }
+
+      if (backendErrors.confirm_password) {
+        nuevosErrores.confirm = Array.isArray(
+          backendErrors.confirm_password
+        )
+          ? backendErrors.confirm_password[0]
+          : backendErrors.confirm_password;
+      }
+
+      if (backendErrors.nombre_cancha) {
+        nuevosErrores.cancha = Array.isArray(
+          backendErrors.nombre_cancha
+        )
+          ? backendErrors.nombre_cancha[0]
+          : backendErrors.nombre_cancha;
+      }
+
+      if (backendErrors.direccion) {
+        nuevosErrores.direccion = Array.isArray(
+          backendErrors.direccion
+        )
+          ? backendErrors.direccion[0]
+          : backendErrors.direccion;
+      }
+
+      if (backendErrors.telefono) {
+        nuevosErrores.telefono = Array.isArray(
+          backendErrors.telefono
+        )
+          ? backendErrors.telefono[0]
+          : backendErrors.telefono;
+      }
+
+      setErrors(nuevosErrores);
+
+      if (Object.keys(nuevosErrores).length === 0) {
+        setGeneralError(
+          error.message ||
+            "No se pudo completar el registro."
+        );
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-white dark:bg-slate-900">
-      
-      {/* 🌙 MODO OSCURO */}
+
       <div className="fixed top-4 right-4">
         <ThemeToggle />
       </div>
@@ -92,9 +207,12 @@ export default function Register() {
             </span>
           }
         >
-          <form onSubmit={onSubmit} noValidate className="space-y-4">
+          <form
+            onSubmit={onSubmit}
+            noValidate
+            className="space-y-4"
+          >
 
-            {/* USUARIO */}
             <Input
               label="Nombre de usuario"
               name="username"
@@ -104,7 +222,6 @@ export default function Register() {
               error={errors.username}
             />
 
-            {/* EMAIL */}
             <Input
               label="Email"
               name="email"
@@ -115,7 +232,6 @@ export default function Register() {
               error={errors.email}
             />
 
-            {/* CONTRASEÑA */}
             <Input
               label="Contraseña"
               name="password"
@@ -126,7 +242,6 @@ export default function Register() {
               error={errors.password}
             />
 
-            {/* CONFIRMAR */}
             <Input
               label="Confirmar contraseña"
               name="confirm"
@@ -137,23 +252,27 @@ export default function Register() {
               error={errors.confirm}
             />
 
-            {/* ROL */}
             <div>
               <label className="block text-sm font-medium mb-1.5">
                 Tipo de usuario
               </label>
+
               <select
                 name="role"
                 value={form.role}
                 onChange={onChange}
                 className="w-full h-11 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-3"
               >
-                <option value="player">Jugador</option>
-                <option value="owner">Dueño de cancha</option>
+                <option value="player">
+                  Jugador
+                </option>
+
+                <option value="owner">
+                  Dueño de cancha
+                </option>
               </select>
             </div>
 
-            {/* CAMPOS DUEÑO */}
             {form.role === "owner" && (
               <>
                 <Input
@@ -181,12 +300,23 @@ export default function Register() {
                 />
 
                 <p className="text-xs text-yellow-500 text-center">
-                  Tu cuenta será revisada antes de habilitar funciones de dueño.
+                  Tu cuenta será revisada antes de habilitar
+                  funciones de dueño.
                 </p>
               </>
             )}
 
-            <Button type="submit">Crear cuenta</Button>
+            {generalError && (
+              <p className="text-sm text-red-500 text-center">
+                {generalError}
+              </p>
+            )}
+
+            <Button type="submit">
+              {loading
+                ? "Creando cuenta..."
+                : "Crear cuenta"}
+            </Button>
           </form>
         </FormContainer>
       </div>
