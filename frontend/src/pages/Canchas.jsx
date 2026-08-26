@@ -1,8 +1,10 @@
 import { useNavigate } from "react-router-dom";
+
 import Header from "../components/Header";
 import BottomNavbar from "../components/BottomNavbar";
 import CanchaCard from "../components/CanchaCard";
 import { CANCHAS_MOCK } from "../data/canchas";
+
 
 function obtenerUsuario() {
   try {
@@ -12,33 +14,41 @@ function obtenerUsuario() {
   }
 }
 
-function usuarioEsOwner(usuario) {
-  const rol = usuario?.role?.trim().toLowerCase();
-
-  return [
-    "owner",
-    "dueño",
-    "dueno",
-    "duenio",
-    "dueño de cancha",
-    "dueno de cancha",
-    "duenio de cancha",
-  ].includes(rol);
-}
 
 export default function Canchas() {
   const navigate = useNavigate();
 
   const usuario = obtenerUsuario();
-  const esOwner = usuarioEsOwner(usuario);
 
-  const emailUsuario = usuario?.email?.trim().toLowerCase();
+  const rol = usuario?.role?.trim().toLowerCase();
+  const estado = usuario?.status?.trim().toLowerCase();
+
+  const esAdmin = rol === "admin";
+
+  const esOwner = rol === "owner";
+
+  const ownerAprobado =
+    esOwner && estado === "approved";
+
+  const ownerPendiente =
+    esOwner && estado === "pending";
+
+  const ownerRechazado =
+    esOwner && estado === "rejected";
+
+  const puedeGestionarCanchas =
+    esAdmin || ownerAprobado;
+
+  const emailUsuario =
+    usuario?.email?.trim().toLowerCase();
+
 
   return (
     <div className="min-h-screen bg-white pb-24 text-slate-900 dark:bg-slate-950 dark:text-white">
       <Header />
 
       <main className="mx-auto max-w-6xl px-5 pt-8 sm:px-6 sm:pt-10">
+
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
@@ -50,7 +60,7 @@ export default function Canchas() {
             </p>
           </div>
 
-          {esOwner && (
+          {puedeGestionarCanchas && (
             <button
               type="button"
               onClick={() => navigate("/canchas/nueva")}
@@ -61,16 +71,35 @@ export default function Canchas() {
           )}
         </div>
 
+
+        {ownerPendiente && (
+          <div className="mt-6 rounded-lg border border-yellow-300 bg-yellow-50 p-4 text-sm text-yellow-800 dark:border-yellow-700 dark:bg-yellow-950/30 dark:text-yellow-300">
+            Tu solicitud como dueño de cancha está pendiente de aprobación.
+            Podés ver las canchas, pero todavía no podés administrarlas.
+          </div>
+        )}
+
+
+        {ownerRechazado && (
+          <div className="mt-6 rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-800 dark:border-red-700 dark:bg-red-950/30 dark:text-red-300">
+            Tu solicitud como dueño de cancha fue rechazada.
+            No tenés habilitadas las funciones de gestión de canchas.
+          </div>
+        )}
+
+
         <section className="mt-8 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
           {CANCHAS_MOCK.map((cancha) => {
-            const emailDueno = cancha.ownerEmail
-              ?.trim()
-              .toLowerCase();
+            const emailDueno =
+              cancha.ownerEmail?.trim().toLowerCase();
 
             const esPropietario =
-              esOwner &&
-              emailUsuario &&
-              emailDueno === emailUsuario;
+              esAdmin ||
+              (
+                ownerAprobado &&
+                emailUsuario &&
+                emailDueno === emailUsuario
+              );
 
             return (
               <CanchaCard

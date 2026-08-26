@@ -1,48 +1,162 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+
 import FormContainer from "../components/FormContainer.jsx";
 import Input from "../components/Input.jsx";
 import Button from "../components/Button.jsx";
 import ThemeToggle from "../components/ThemeToggle.jsx";
 
+import { loginUser } from "../services/api.js";
+
+
 export default function Login() {
-  const [form, setForm] = useState({ email: "", password: "" });
+  const [form, setForm] = useState({
+    email: "",
+    password: "",
+  });
+
   const [errors, setErrors] = useState({});
-  const navigate = useNavigate(); // 👈 NUEVO
+  const [generalError, setGeneralError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const navigate = useNavigate();
+
 
   const onChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
-    setErrors({ ...errors, [e.target.name]: undefined });
+    setForm({
+      ...form,
+      [e.target.name]: e.target.value,
+    });
+
+    setErrors({
+      ...errors,
+      [e.target.name]: undefined,
+    });
+
+    setGeneralError("");
   };
+
 
   const validate = () => {
     const e = {};
-    if (!form.email.includes("@")) e.email = 'El email debe contener "@"';
-    if (form.password.length === 0) e.password = "Ingresá tu contraseña";
+
+    if (!form.email.includes("@")) {
+      e.email = 'El email debe contener "@"';
+    }
+
+    if (form.password.length === 0) {
+      e.password = "Ingresá tu contraseña";
+    }
+
     return e;
   };
 
-  const onSubmit = (ev) => {
-    ev.preventDefault();
-    const e = validate();
-    setErrors(e);
 
-    if (Object.keys(e).length === 0) {
-      // 💾 guardar usuario (simulación)
+  const onSubmit = async (ev) => {
+    ev.preventDefault();
+
+    const validationErrors = validate();
+
+    setErrors(validationErrors);
+    setGeneralError("");
+
+    if (Object.keys(validationErrors).length > 0) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const data = await loginUser({
+        email: form.email.trim(),
+        password: form.password,
+      });
+
+      const backendRole = data.usuario.rol;
+
+      let frontendRole = "player";
+
+      if (backendRole === "dueno_cancha") {
+        frontendRole = "owner";
+      }
+
+      if (backendRole === "administrador") {
+        frontendRole = "admin";
+      }
+
+      const backendStatus = data.solicitud_dueno?.estado;
+
+      let frontendStatus = "approved";
+
+      if (backendRole === "dueno_cancha") {
+        if (backendStatus === "pendiente") {
+          frontendStatus = "pending";
+        } else if (backendStatus === "aprobada") {
+          frontendStatus = "approved";
+        } else if (backendStatus === "rechazada") {
+          frontendStatus = "rejected";
+        }
+      }
+
+      const user = {
+        ...data.usuario,
+        role: frontendRole,
+        backendRole: backendRole,
+        status: frontendStatus,
+        solicitudDueno: data.solicitud_dueno || null,
+      };
+
       localStorage.setItem(
-        "user",
-        JSON.stringify({ email: form.email })
+        "token",
+        data.token
       );
 
-      // 🚀 redirigir a home
+      localStorage.setItem(
+        "user",
+        JSON.stringify(user)
+      );
+
       navigate("/inicio");
+
+    } catch (error) {
+      const backendErrors = error.data || {};
+
+      const nuevosErrores = {};
+
+      if (backendErrors.email) {
+        nuevosErrores.email = Array.isArray(
+          backendErrors.email
+        )
+          ? backendErrors.email[0]
+          : backendErrors.email;
+      }
+
+      if (backendErrors.password) {
+        nuevosErrores.password = Array.isArray(
+          backendErrors.password
+        )
+          ? backendErrors.password[0]
+          : backendErrors.password;
+      }
+
+      setErrors(nuevosErrores);
+
+      if (Object.keys(nuevosErrores).length === 0) {
+        setGeneralError(
+          error.message ||
+            "No se pudo iniciar sesión."
+        );
+      }
+
+    } finally {
+      setLoading(false);
     }
   };
 
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-white dark:bg-slate-900">
-      
-      {/* 🌙 BOTÓN MODO OSCURO */}
+
       <div className="fixed top-4 right-4">
         <ThemeToggle />
       </div>
@@ -62,8 +176,11 @@ export default function Login() {
             </span>
           }
         >
-          <form onSubmit={onSubmit} noValidate className="space-y-4">
-            
+          <form
+            onSubmit={onSubmit}
+            noValidate
+            className="space-y-4"
+          >
             <Input
               label="Email"
               name="email"
@@ -86,7 +203,17 @@ export default function Login() {
               autoComplete="current-password"
             />
 
-            <Button type="submit">Iniciar sesión</Button>
+            {generalError && (
+              <p className="text-sm text-red-500 text-center">
+                {generalError}
+              </p>
+            )}
+
+            <Button type="submit">
+              {loading
+                ? "Iniciando sesión..."
+                : "Iniciar sesión"}
+            </Button>
           </form>
         </FormContainer>
       </div>
