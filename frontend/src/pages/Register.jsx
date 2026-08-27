@@ -55,7 +55,7 @@ export default function Register() {
     }
 
     if (form.password.length < 8) {
-      e.password = "La contraseña debe tener al menos 8 caracteres";
+      e.password = "La contraseña debe tener al menos 8 caracteres y al menos una letra";
     }
 
     if (form.confirm !== form.password) {
