@@ -54,8 +54,8 @@ export default function Register() {
       e.email = 'El email debe contener "@"';
     }
 
-    if (form.password.length <= 6) {
-      e.password = "La contraseña debe tener más de 6 caracteres";
+    if (form.password.length < 8) {
+      e.password = "La contraseña debe tener al menos 8 caracteres";
     }
 
     if (form.confirm !== form.password) {
@@ -113,72 +113,126 @@ export default function Register() {
     try {
       setLoading(true);
 
-      await registerUser(datos);
+      const data = await registerUser(datos);
 
-      navigate("/login");
+      const backendRole = data.usuario.rol;
+
+      let frontendRole = "player";
+
+      if (backendRole === "dueno_cancha") {
+        frontendRole = "owner";
+      }
+
+      if (backendRole === "administrador") {
+        frontendRole = "admin";
+      }
+
+      const backendStatus =
+        data.solicitud_dueno?.estado;
+
+      let frontendStatus = "approved";
+
+      if (backendRole === "dueno_cancha") {
+        if (backendStatus === "pendiente") {
+          frontendStatus = "pending";
+        } else if (backendStatus === "aprobada") {
+          frontendStatus = "approved";
+        } else if (backendStatus === "rechazada") {
+          frontendStatus = "rejected";
+        }
+      }
+
+      const user = {
+        ...data.usuario,
+        role: frontendRole,
+        backendRole: backendRole,
+        status: frontendStatus,
+        solicitudDueno:
+          data.solicitud_dueno || null,
+      };
+
+      localStorage.setItem(
+        "token",
+        data.token
+      );
+
+      localStorage.setItem(
+        "user",
+        JSON.stringify(user)
+      );
+
+      navigate("/inicio");
+
     } catch (error) {
-      const backendErrors = error.data || {};
+      const backendErrors =
+        error.data || {};
 
       const nuevosErrores = {};
 
       if (backendErrors.username) {
-        nuevosErrores.username = Array.isArray(backendErrors.username)
-          ? backendErrors.username[0]
-          : backendErrors.username;
+        nuevosErrores.username =
+          Array.isArray(backendErrors.username)
+            ? backendErrors.username[0]
+            : backendErrors.username;
       }
 
       if (backendErrors.email) {
-        nuevosErrores.email = Array.isArray(backendErrors.email)
-          ? backendErrors.email[0]
-          : backendErrors.email;
+        nuevosErrores.email =
+          Array.isArray(backendErrors.email)
+            ? backendErrors.email[0]
+            : backendErrors.email;
       }
 
       if (backendErrors.password) {
-        nuevosErrores.password = Array.isArray(backendErrors.password)
-          ? backendErrors.password[0]
-          : backendErrors.password;
+        nuevosErrores.password =
+          Array.isArray(backendErrors.password)
+            ? backendErrors.password[0]
+            : backendErrors.password;
       }
 
       if (backendErrors.confirm_password) {
-        nuevosErrores.confirm = Array.isArray(
-          backendErrors.confirm_password
-        )
-          ? backendErrors.confirm_password[0]
-          : backendErrors.confirm_password;
+        nuevosErrores.confirm =
+          Array.isArray(
+            backendErrors.confirm_password
+          )
+            ? backendErrors.confirm_password[0]
+            : backendErrors.confirm_password;
       }
 
       if (backendErrors.nombre_cancha) {
-        nuevosErrores.cancha = Array.isArray(
-          backendErrors.nombre_cancha
-        )
-          ? backendErrors.nombre_cancha[0]
-          : backendErrors.nombre_cancha;
+        nuevosErrores.cancha =
+          Array.isArray(
+            backendErrors.nombre_cancha
+          )
+            ? backendErrors.nombre_cancha[0]
+            : backendErrors.nombre_cancha;
       }
 
       if (backendErrors.direccion) {
-        nuevosErrores.direccion = Array.isArray(
-          backendErrors.direccion
-        )
-          ? backendErrors.direccion[0]
-          : backendErrors.direccion;
+        nuevosErrores.direccion =
+          Array.isArray(backendErrors.direccion)
+            ? backendErrors.direccion[0]
+            : backendErrors.direccion;
       }
 
       if (backendErrors.telefono) {
-        nuevosErrores.telefono = Array.isArray(
-          backendErrors.telefono
-        )
-          ? backendErrors.telefono[0]
-          : backendErrors.telefono;
+        nuevosErrores.telefono =
+          Array.isArray(backendErrors.telefono)
+            ? backendErrors.telefono[0]
+            : backendErrors.telefono;
       }
 
       setErrors(nuevosErrores);
 
-      if (Object.keys(nuevosErrores).length === 0) {
+      if (
+        Object.keys(nuevosErrores).length === 0
+      ) {
         setGeneralError(
           error.message ||
             "No se pudo completar el registro."
         );
       }
+
     } finally {
       setLoading(false);
     }
@@ -198,6 +252,7 @@ export default function Register() {
           footer={
             <span className="text-gray-600 dark:text-gray-400">
               ¿Ya tenés cuenta?{" "}
+
               <Link
                 to="/login"
                 className="text-brand font-semibold hover:underline"
@@ -236,7 +291,7 @@ export default function Register() {
               label="Contraseña"
               name="password"
               isPassword
-              placeholder="Más de 6 caracteres"
+              placeholder="Mínimo 8 caracteres"
               value={form.password}
               onChange={onChange}
               error={errors.password}
@@ -317,6 +372,7 @@ export default function Register() {
                 ? "Creando cuenta..."
                 : "Crear cuenta"}
             </Button>
+
           </form>
         </FormContainer>
       </div>
