@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import {
@@ -20,7 +20,11 @@ import InfoRow from "../components/InfoRow";
 import OptionPill from "../components/OptionPill";
 import Avatar from "../components/Avatar";
 
-import { logoutUser } from "../services/api.js";
+import {
+  getMe,
+  updateMe,
+  logoutUser,
+} from "../services/api.js";
 
 const POSITIONS = [
   "Delantero",
@@ -31,17 +35,19 @@ const POSITIONS = [
 
 const LEGS = ["Derecha", "Izquierda"];
 
-const MOCK_PROFILE = {
-  fullName: "Carlos Rodríguez",
-  username: "@carlosrod10",
-  age: "28 años",
-  email: "carlos.rod@email.com",
-  phone: "+54 9 11 1234-5678",
-  position: "Delantero",
-  leg: "Izquierda",
-  bio: "Juego los fines de semana. Busco partidos competitivos pero amistosos. Prefiero jugar arriba y correr a los espacios.",
+const EMPTY_PROFILE = {
+  fullName: "",
+  username: "",
+  age: "",
+  email: "",
+  phone: "",
+  position: "",
+  leg: "",
+  bio: "",
   photo:
     "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=400&q=80",
+
+  // Por ahora estas estadísticas siguen siendo mock
   matchesPlayed: 42,
   rating: 4.8,
   reviews: 15,
@@ -50,9 +56,66 @@ const MOCK_PROFILE = {
 export default function Profile() {
   const navigate = useNavigate();
 
-  const [profile, setProfile] = useState(MOCK_PROFILE);
-  const [draft, setDraft] = useState(MOCK_PROFILE);
+  const [profile, setProfile] = useState(EMPTY_PROFILE);
+  const [draft, setDraft] = useState(EMPTY_PROFILE);
   const [isEditing, setIsEditing] = useState(false);
+  const [loadingProfile, setLoadingProfile] = useState(true);
+  const [profileError, setProfileError] = useState("");
+
+  useEffect(() => {
+    const loadProfile = async () => {
+      const token = localStorage.getItem("token");
+
+      if (!token) {
+        navigate("/login", {
+          replace: true,
+        });
+
+        return;
+      }
+
+      try {
+        const data = await getMe(token);
+
+        const realProfile = {
+          ...EMPTY_PROFILE,
+          fullName: data.username,
+          username: `@${data.username}`,
+          age:
+            data.edad !== null && data.edad !== undefined
+              ? `${data.edad} años`
+              : "Sin especificar",
+          email: data.email,
+          phone: data.telefono || "Sin especificar",
+          position: data.posicion || "",
+          leg: data.pierna_habil || "",
+          bio: data.bio || "Sin biografía.",
+        };
+
+        setProfile(realProfile);
+        setDraft(realProfile);
+      } catch (error) {
+        console.error("Error al cargar el perfil:", error);
+
+        if (error.status === 401) {
+          localStorage.removeItem("token");
+          localStorage.removeItem("user");
+
+          navigate("/login", {
+            replace: true,
+          });
+
+          return;
+        }
+
+        setProfileError("No se pudo cargar tu perfil.");
+      } finally {
+        setLoadingProfile(false);
+      }
+    };
+
+    loadProfile();
+  }, [navigate]);
 
   const setField = (field) => (value) => {
     setDraft((previousDraft) => ({
@@ -63,17 +126,80 @@ export default function Profile() {
 
   const startEditing = () => {
     setDraft(profile);
+    setProfileError("");
     setIsEditing(true);
   };
 
   const cancelEditing = () => {
     setDraft(profile);
+    setProfileError("");
     setIsEditing(false);
   };
 
-  const saveChanges = () => {
-    setProfile(draft);
-    setIsEditing(false);
+  const saveChanges = async () => {
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      navigate("/login", {
+        replace: true,
+      });
+
+      return;
+    }
+
+    const edadEncontrada = String(draft.age).match(/\d+/);
+
+    const datos = {
+      edad: edadEncontrada
+        ? Number(edadEncontrada[0])
+        : null,
+      telefono:
+        draft.phone === "Sin especificar"
+          ? ""
+          : draft.phone.trim(),
+      posicion: draft.position,
+      pierna_habil: draft.leg,
+      bio:
+        draft.bio === "Sin biografía."
+          ? ""
+          : draft.bio.trim(),
+    };
+
+    try {
+      await updateMe(token, datos);
+
+      const updatedProfile = {
+        ...draft,
+        age:
+          datos.edad !== null
+            ? `${datos.edad} años`
+            : "Sin especificar",
+        phone:
+          datos.telefono || "Sin especificar",
+        bio:
+          datos.bio || "Sin biografía.",
+      };
+
+      setProfile(updatedProfile);
+      setDraft(updatedProfile);
+      setProfileError("");
+      setIsEditing(false);
+    } catch (error) {
+      console.error("Error al actualizar el perfil:", error);
+
+      if (error.status === 401) {
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+
+        navigate("/login", {
+          replace: true,
+        });
+
+        return;
+      }
+
+      setProfileError("No se pudieron guardar los cambios.");
+    }
   };
 
   const handleLogout = async () => {
@@ -97,6 +223,22 @@ export default function Profile() {
 
   const data = isEditing ? draft : profile;
 
+  if (loadingProfile) {
+    return (
+      <div className="min-h-screen bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-neutral-100">
+        <Header />
+
+        <main className="mx-auto max-w-7xl px-4 pb-32 pt-8 sm:px-6 lg:px-8">
+          <p className="text-center text-slate-500 dark:text-neutral-400">
+            Cargando perfil...
+          </p>
+        </main>
+
+        <BottomNavbar />
+      </div>
+    );
+  }
+
   return (
     <div
       className="
@@ -118,6 +260,12 @@ export default function Profile() {
             Administra tu información personal, estadísticas y preferencias.
           </p>
         </div>
+
+        {profileError && (
+          <p className="mb-4 text-center text-sm text-red-500">
+            {profileError}
+          </p>
+        )}
 
         {/* Sección principal que agrupa todo el perfil */}
         <section
@@ -170,27 +318,9 @@ export default function Profile() {
               />
 
               <div className="mt-5 text-center">
-                {isEditing ? (
-                  <input
-                    value={draft.fullName}
-                    aria-label="Nombre y apellido"
-                    onChange={(event) =>
-                      setField("fullName")(event.target.value)
-                    }
-                    className="
-                      w-full rounded-lg border border-slate-300
-                      bg-white px-3 py-2 text-center text-xl
-                      font-bold text-slate-900 outline-none
-                      transition-colors focus:border-green-500
-                      dark:border-slate-950 dark:bg-slate-900
-                      dark:text-neutral-100
-                    "
-                  />
-                ) : (
-                  <h2 className="text-2xl font-bold">
-                    {data.fullName}
-                  </h2>
-                )}
+                <h2 className="text-2xl font-bold">
+                  {profile.fullName}
+                </h2>
 
                 {/* El nombre de usuario nunca es editable */}
                 <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">

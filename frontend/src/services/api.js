@@ -67,3 +67,13 @@ export function logoutUser(token) {
     },
   });
 }
+
+export function updateMe(token, datos) {
+  return request("/me/", {
+    method: "PATCH",
+    headers: {
+      Authorization: `Token ${token}`,
+    },
+    body: JSON.stringify(datos),
+  });
+}

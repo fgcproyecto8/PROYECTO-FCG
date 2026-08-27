@@ -147,3 +147,15 @@ class LoginSerializer(serializers.Serializer):
     password = serializers.CharField(
         write_only=True
     )
+
+
+class PerfilUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Perfil
+        fields = (
+            "edad",
+            "telefono",
+            "posicion",
+            "pierna_habil",
+            "bio",
+        )
