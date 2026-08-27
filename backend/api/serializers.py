@@ -1,6 +1,7 @@
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 from django.db import transaction
+from django.core.exceptions import ValidationError as DjangoValidationError
 
 from rest_framework import serializers
 
@@ -64,8 +65,18 @@ class RegisterSerializer(serializers.Serializer):
             raise serializers.ValidationError({
                 "email": "Ya existe una cuenta con ese email."
             })
+        
+        if data["password"].isdigit():
+            raise serializers.ValidationError({
+                "password": "La contraseña no puede estar formada solamente por números."
+            })
 
-        validate_password(data["password"])
+        try:
+            validate_password(data["password"])
+        except DjangoValidationError as error:
+            raise serializers.ValidationError({
+                "password": error.messages
+            })
 
         if data["tipo_usuario"] == Perfil.Rol.DUENO_CANCHA:
 
