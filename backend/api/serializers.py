@@ -43,8 +43,6 @@ class RegisterSerializer(serializers.Serializer):
     )
 
 
-
-
     def validate(self, data):
 
         if data["password"] != data["confirm_password"]:
@@ -65,7 +63,7 @@ class RegisterSerializer(serializers.Serializer):
             raise serializers.ValidationError({
                 "email": "Ya existe una cuenta con ese email."
             })
-        
+
         if data["password"].isdigit():
             raise serializers.ValidationError({
                 "password": "La contraseña no puede estar formada solamente por números."
@@ -142,6 +140,7 @@ class RegisterSerializer(serializers.Serializer):
 
         return user
 
+
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(
@@ -158,4 +157,5 @@ class PerfilUpdateSerializer(serializers.ModelSerializer):
             "posicion",
             "pierna_habil",
             "bio",
+            "foto",
         )

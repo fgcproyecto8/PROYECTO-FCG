@@ -6,7 +6,12 @@ export default function Avatar({ src, alt, editable = false, onChangePhoto }) {
 
   const handleFile = (e) => {
     const file = e.target.files?.[0];
-    if (file) onChangePhoto(URL.createObjectURL(file));
+
+    if (file) {
+      const previewUrl = URL.createObjectURL(file);
+
+      onChangePhoto(file, previewUrl);
+    }
   };
 
   return (

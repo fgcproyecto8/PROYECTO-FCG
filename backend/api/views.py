@@ -182,11 +182,21 @@ def me(request):
         )
 
         if serializer.is_valid():
-            serializer.save()
+            perfil_actualizado = serializer.save()
+
+            datos_perfil = dict(serializer.data)
+
+            datos_perfil["foto"] = (
+                request.build_absolute_uri(
+                    perfil_actualizado.foto.url
+                )
+                if perfil_actualizado.foto
+                else None
+            )
 
             return Response({
                 "mensaje": "Perfil actualizado correctamente.",
-                "perfil": serializer.data,
+                "perfil": datos_perfil,
             })
 
         return Response(
@@ -214,6 +224,11 @@ def me(request):
         "posicion": perfil.posicion,
         "pierna_habil": perfil.pierna_habil,
         "bio": perfil.bio,
+        "foto": (
+            request.build_absolute_uri(perfil.foto.url)
+            if perfil.foto
+            else None
+        ),
     }
 
     if perfil.rol == Perfil.Rol.DUENO_CANCHA:

@@ -58,6 +58,7 @@ export default function Profile() {
 
   const [profile, setProfile] = useState(EMPTY_PROFILE);
   const [draft, setDraft] = useState(EMPTY_PROFILE);
+  const [photoFile, setPhotoFile] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [profileError, setProfileError] = useState("");
@@ -90,6 +91,7 @@ export default function Profile() {
           position: data.posicion || "",
           leg: data.pierna_habil || "",
           bio: data.bio || "Sin biografía.",
+          photo: data.foto || EMPTY_PROFILE.photo,
         };
 
         setProfile(realProfile);
@@ -124,14 +126,25 @@ export default function Profile() {
     }));
   };
 
+  const handleChangePhoto = (file, previewUrl) => {
+    setPhotoFile(file);
+
+    setDraft((previousDraft) => ({
+      ...previousDraft,
+      photo: previewUrl,
+    }));
+  };
+
   const startEditing = () => {
     setDraft(profile);
+    setPhotoFile(null);
     setProfileError("");
     setIsEditing(true);
   };
 
   const cancelEditing = () => {
     setDraft(profile);
+    setPhotoFile(null);
     setProfileError("");
     setIsEditing(false);
   };
@@ -149,39 +162,78 @@ export default function Profile() {
 
     const edadEncontrada = String(draft.age).match(/\d+/);
 
-    const datos = {
-      edad: edadEncontrada
-        ? Number(edadEncontrada[0])
-        : null,
-      telefono:
-        draft.phone === "Sin especificar"
-          ? ""
-          : draft.phone.trim(),
-      posicion: draft.position,
-      pierna_habil: draft.leg,
-      bio:
-        draft.bio === "Sin biografía."
-          ? ""
-          : draft.bio.trim(),
-    };
+    const edad = edadEncontrada
+      ? Number(edadEncontrada[0])
+      : null;
+
+    const telefono =
+      draft.phone === "Sin especificar"
+        ? ""
+        : draft.phone.trim();
+
+    const bio =
+      draft.bio === "Sin biografía."
+        ? ""
+        : draft.bio.trim();
+
+    const datos = new FormData();
+
+    datos.append(
+      "edad",
+      edad !== null ? String(edad) : ""
+    );
+
+    datos.append(
+      "telefono",
+      telefono
+    );
+
+    datos.append(
+      "posicion",
+      draft.position
+    );
+
+    datos.append(
+      "pierna_habil",
+      draft.leg
+    );
+
+    datos.append(
+      "bio",
+      bio
+    );
+
+    if (photoFile) {
+      datos.append(
+        "foto",
+        photoFile
+      );
+    }
 
     try {
-      await updateMe(token, datos);
+      const response = await updateMe(
+        token,
+        datos
+      );
 
       const updatedProfile = {
         ...draft,
         age:
-          datos.edad !== null
-            ? `${datos.edad} años`
+          edad !== null
+            ? `${edad} años`
             : "Sin especificar",
         phone:
-          datos.telefono || "Sin especificar",
+          telefono || "Sin especificar",
         bio:
-          datos.bio || "Sin biografía.",
+          bio || "Sin biografía.",
+        photo:
+          response.perfil?.foto ||
+          profile.photo,
       };
 
       setProfile(updatedProfile);
       setDraft(updatedProfile);
+      setPhotoFile(null);
       setProfileError("");
       setIsEditing(false);
     } catch (error) {
@@ -314,7 +366,7 @@ export default function Profile() {
                 src={data.photo}
                 alt={data.fullName}
                 editable={isEditing}
-                onChangePhoto={setField("photo")}
+                onChangePhoto={handleChangePhoto}
               />
 
               <div className="mt-5 text-center">

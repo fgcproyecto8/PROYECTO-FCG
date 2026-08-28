@@ -19,7 +19,7 @@ class Perfil(models.Model):
         choices=Rol.choices
     )
 
-    # Datos que el usuario podrá completar/editar desde su perfil
+    
     edad = models.PositiveIntegerField(
         null=True,
         blank=True
@@ -41,6 +41,12 @@ class Perfil(models.Model):
     )
 
     bio = models.TextField(
+        blank=True
+    )
+
+    foto = models.ImageField(
+        upload_to="perfiles/",
+        null=True,
         blank=True
     )
 
