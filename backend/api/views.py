@@ -186,6 +186,8 @@ def me(request):
 
             datos_perfil = dict(serializer.data)
 
+            datos_perfil["edad"] = perfil_actualizado.edad
+
             datos_perfil["foto"] = (
                 request.build_absolute_uri(
                     perfil_actualizado.foto.url
@@ -219,6 +221,11 @@ def me(request):
         "username": user.username,
         "email": user.email,
         "rol": perfil.rol,
+        "fecha_nacimiento": (
+            perfil.fecha_nacimiento.isoformat()
+            if perfil.fecha_nacimiento
+            else None
+        ),
         "edad": perfil.edad,
         "telefono": perfil.telefono,
         "posicion": perfil.posicion,

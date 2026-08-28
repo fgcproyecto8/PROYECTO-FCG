@@ -35,22 +35,40 @@ const POSITIONS = [
 
 const LEGS = ["Derecha", "Izquierda"];
 
+const DEFAULT_AVATAR =
+  "data:image/svg+xml;charset=UTF-8," +
+  encodeURIComponent(`
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+      <rect width="128" height="128" fill="#e2e8f0"/>
+      <circle cx="64" cy="45" r="24" fill="#64748b"/>
+      <path d="M24 116c4-26 21-40 40-40s36 14 40 40" fill="#64748b"/>
+    </svg>
+  `);
+
+const hoy = new Date();
+
+const TODAY = [
+  hoy.getFullYear(),
+  String(hoy.getMonth() + 1).padStart(2, "0"),
+  String(hoy.getDate()).padStart(2, "0"),
+].join("-");
+
 const EMPTY_PROFILE = {
   fullName: "",
   username: "",
+  birthDate: "",
   age: "",
   email: "",
   phone: "",
   position: "",
   leg: "",
   bio: "",
-  photo:
-    "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=400&q=80",
+  photo: DEFAULT_AVATAR,
 
-  // Por ahora estas estadísticas siguen siendo mock
-  matchesPlayed: 42,
-  rating: 4.8,
-  reviews: 15,
+  // Hasta conectar partidos y reseñas reales
+  matchesPlayed: 0,
+  rating: 0,
+  reviews: 0,
 };
 
 export default function Profile() {
@@ -82,6 +100,7 @@ export default function Profile() {
           ...EMPTY_PROFILE,
           fullName: data.username,
           username: `@${data.username}`,
+          birthDate: data.fecha_nacimiento || "",
           age:
             data.edad !== null && data.edad !== undefined
               ? `${data.edad} años`
@@ -91,7 +110,7 @@ export default function Profile() {
           position: data.posicion || "",
           leg: data.pierna_habil || "",
           bio: data.bio || "Sin biografía.",
-          photo: data.foto || EMPTY_PROFILE.photo,
+          photo: data.foto || DEFAULT_AVATAR,
         };
 
         setProfile(realProfile);
@@ -160,12 +179,6 @@ export default function Profile() {
       return;
     }
 
-    const edadEncontrada = String(draft.age).match(/\d+/);
-
-    const edad = edadEncontrada
-      ? Number(edadEncontrada[0])
-      : null;
-
     const telefono =
       draft.phone === "Sin especificar"
         ? ""
@@ -178,10 +191,12 @@ export default function Profile() {
 
     const datos = new FormData();
 
-    datos.append(
-      "edad",
-      edad !== null ? String(edad) : ""
-    );
+    if (draft.birthDate) {
+      datos.append(
+        "fecha_nacimiento",
+        draft.birthDate
+      );
+    }
 
     datos.append(
       "telefono",
@@ -218,9 +233,13 @@ export default function Profile() {
 
       const updatedProfile = {
         ...draft,
+        birthDate:
+          response.perfil?.fecha_nacimiento ||
+          draft.birthDate,
         age:
-          edad !== null
-            ? `${edad} años`
+          response.perfil?.edad !== null &&
+          response.perfil?.edad !== undefined
+            ? `${response.perfil.edad} años`
             : "Sin especificar",
         phone:
           telefono || "Sin especificar",
@@ -246,6 +265,26 @@ export default function Profile() {
         navigate("/login", {
           replace: true,
         });
+
+        return;
+      }
+
+      if (error.data?.telefono) {
+        setProfileError(
+          Array.isArray(error.data.telefono)
+            ? error.data.telefono[0]
+            : error.data.telefono
+        );
+
+        return;
+      }
+
+      if (error.data?.fecha_nacimiento) {
+        setProfileError(
+          Array.isArray(error.data.fecha_nacimiento)
+            ? error.data.fecha_nacimiento[0]
+            : error.data.fecha_nacimiento
+        );
 
         return;
       }
@@ -381,13 +420,23 @@ export default function Profile() {
               </div>
 
               <div className="mt-6 space-y-3">
-                <InfoRow
-                  icon={Calendar}
-                  value={data.age}
-                  editable={isEditing}
-                  onChange={setField("age")}
-                  ariaLabel="Edad"
-                />
+                {isEditing ? (
+                  <InfoRow
+                    icon={Calendar}
+                    value={draft.birthDate}
+                    editable
+                    onChange={setField("birthDate")}
+                    type="date"
+                    max={TODAY}
+                    ariaLabel="Fecha de nacimiento"
+                  />
+                ) : (
+                  <InfoRow
+                    icon={Calendar}
+                    value={profile.age}
+                    ariaLabel="Edad"
+                  />
+                )}
 
                 {/* El correo nunca es editable */}
                 <InfoRow
@@ -398,9 +447,16 @@ export default function Profile() {
 
                 <InfoRow
                   icon={Phone}
-                  value={data.phone}
+                  value={
+                    isEditing &&
+                    draft.phone === "Sin especificar"
+                      ? ""
+                      : data.phone
+                  }
                   editable={isEditing}
                   onChange={setField("phone")}
+                  type="tel"
+                  numericOnly
                   ariaLabel="Teléfono"
                 />
               </div>
