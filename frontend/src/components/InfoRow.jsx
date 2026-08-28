@@ -7,7 +7,19 @@ export default function InfoRow({
   onChange,
   type = "text",
   ariaLabel,
+  numericOnly = false,
+  max,
 }) {
+  const handleChange = (e) => {
+    let newValue = e.target.value;
+
+    if (numericOnly) {
+      newValue = newValue.replace(/\D/g, "");
+    }
+
+    onChange(newValue);
+  };
+
   return (
     <div
       className="
@@ -27,7 +39,9 @@ export default function InfoRow({
           type={type}
           value={value}
           aria-label={ariaLabel}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={handleChange}
+          inputMode={numericOnly ? "numeric" : undefined}
+          max={max}
           className="
             w-full bg-transparent text-sm font-medium
             text-slate-900 outline-none

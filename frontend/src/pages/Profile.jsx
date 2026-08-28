@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import {
@@ -20,7 +20,11 @@ import InfoRow from "../components/InfoRow";
 import OptionPill from "../components/OptionPill";
 import Avatar from "../components/Avatar";
 
-import { logoutUser } from "../services/api.js";
+import {
+  getMe,
+  updateMe,
+  logoutUser,
+} from "../services/api.js";
 
 const POSITIONS = [
   "Delantero",
@@ -31,28 +35,108 @@ const POSITIONS = [
 
 const LEGS = ["Derecha", "Izquierda"];
 
-const MOCK_PROFILE = {
-  fullName: "Carlos Rodríguez",
-  username: "@carlosrod10",
-  age: "28 años",
-  email: "carlos.rod@email.com",
-  phone: "+54 9 11 1234-5678",
-  position: "Delantero",
-  leg: "Izquierda",
-  bio: "Juego los fines de semana. Busco partidos competitivos pero amistosos. Prefiero jugar arriba y correr a los espacios.",
-  photo:
-    "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=400&q=80",
-  matchesPlayed: 42,
-  rating: 4.8,
-  reviews: 15,
+const DEFAULT_AVATAR =
+  "data:image/svg+xml;charset=UTF-8," +
+  encodeURIComponent(`
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+      <rect width="128" height="128" fill="#e2e8f0"/>
+      <circle cx="64" cy="45" r="24" fill="#64748b"/>
+      <path d="M24 116c4-26 21-40 40-40s36 14 40 40" fill="#64748b"/>
+    </svg>
+  `);
+
+const hoy = new Date();
+
+const TODAY = [
+  hoy.getFullYear(),
+  String(hoy.getMonth() + 1).padStart(2, "0"),
+  String(hoy.getDate()).padStart(2, "0"),
+].join("-");
+
+const EMPTY_PROFILE = {
+  fullName: "",
+  username: "",
+  birthDate: "",
+  age: "",
+  email: "",
+  phone: "",
+  position: "",
+  leg: "",
+  bio: "",
+  photo: DEFAULT_AVATAR,
+
+  // Hasta conectar partidos y reseñas reales
+  matchesPlayed: 0,
+  rating: 0,
+  reviews: 0,
 };
 
 export default function Profile() {
   const navigate = useNavigate();
 
-  const [profile, setProfile] = useState(MOCK_PROFILE);
-  const [draft, setDraft] = useState(MOCK_PROFILE);
+  const [profile, setProfile] = useState(EMPTY_PROFILE);
+  const [draft, setDraft] = useState(EMPTY_PROFILE);
+  const [photoFile, setPhotoFile] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [loadingProfile, setLoadingProfile] = useState(true);
+  const [profileError, setProfileError] = useState("");
+
+  useEffect(() => {
+    const loadProfile = async () => {
+      const token = localStorage.getItem("token");
+
+      if (!token) {
+        navigate("/login", {
+          replace: true,
+        });
+
+        return;
+      }
+
+      try {
+        const data = await getMe(token);
+
+        const realProfile = {
+          ...EMPTY_PROFILE,
+          fullName: data.username,
+          username: `@${data.username}`,
+          birthDate: data.fecha_nacimiento || "",
+          age:
+            data.edad !== null && data.edad !== undefined
+              ? `${data.edad} años`
+              : "Sin especificar",
+          email: data.email,
+          phone: data.telefono || "Sin especificar",
+          position: data.posicion || "",
+          leg: data.pierna_habil || "",
+          bio: data.bio || "Sin biografía.",
+          photo: data.foto || DEFAULT_AVATAR,
+        };
+
+        setProfile(realProfile);
+        setDraft(realProfile);
+      } catch (error) {
+        console.error("Error al cargar el perfil:", error);
+
+        if (error.status === 401) {
+          localStorage.removeItem("token");
+          localStorage.removeItem("user");
+
+          navigate("/login", {
+            replace: true,
+          });
+
+          return;
+        }
+
+        setProfileError("No se pudo cargar tu perfil.");
+      } finally {
+        setLoadingProfile(false);
+      }
+    };
+
+    loadProfile();
+  }, [navigate]);
 
   const setField = (field) => (value) => {
     setDraft((previousDraft) => ({
@@ -61,19 +145,152 @@ export default function Profile() {
     }));
   };
 
+  const handleChangePhoto = (file, previewUrl) => {
+    setPhotoFile(file);
+
+    setDraft((previousDraft) => ({
+      ...previousDraft,
+      photo: previewUrl,
+    }));
+  };
+
   const startEditing = () => {
     setDraft(profile);
+    setPhotoFile(null);
+    setProfileError("");
     setIsEditing(true);
   };
 
   const cancelEditing = () => {
     setDraft(profile);
+    setPhotoFile(null);
+    setProfileError("");
     setIsEditing(false);
   };
 
-  const saveChanges = () => {
-    setProfile(draft);
-    setIsEditing(false);
+  const saveChanges = async () => {
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      navigate("/login", {
+        replace: true,
+      });
+
+      return;
+    }
+
+    const telefono =
+      draft.phone === "Sin especificar"
+        ? ""
+        : draft.phone.trim();
+
+    const bio =
+      draft.bio === "Sin biografía."
+        ? ""
+        : draft.bio.trim();
+
+    const datos = new FormData();
+
+    if (draft.birthDate) {
+      datos.append(
+        "fecha_nacimiento",
+        draft.birthDate
+      );
+    }
+
+    datos.append(
+      "telefono",
+      telefono
+    );
+
+    datos.append(
+      "posicion",
+      draft.position
+    );
+
+    datos.append(
+      "pierna_habil",
+      draft.leg
+    );
+
+    datos.append(
+      "bio",
+      bio
+    );
+
+    if (photoFile) {
+      datos.append(
+        "foto",
+        photoFile
+      );
+    }
+
+    try {
+      const response = await updateMe(
+        token,
+        datos
+      );
+
+      const updatedProfile = {
+        ...draft,
+        birthDate:
+          response.perfil?.fecha_nacimiento ||
+          draft.birthDate,
+        age:
+          response.perfil?.edad !== null &&
+          response.perfil?.edad !== undefined
+            ? `${response.perfil.edad} años`
+            : "Sin especificar",
+        phone:
+          telefono || "Sin especificar",
+        bio:
+          bio || "Sin biografía.",
+        photo:
+          response.perfil?.foto ||
+          profile.photo,
+      };
+
+      setProfile(updatedProfile);
+      setDraft(updatedProfile);
+      setPhotoFile(null);
+      setProfileError("");
+      setIsEditing(false);
+    } catch (error) {
+      console.error("Error al actualizar el perfil:", error);
+
+      if (error.status === 401) {
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+
+        navigate("/login", {
+          replace: true,
+        });
+
+        return;
+      }
+
+      if (error.data?.telefono) {
+        setProfileError(
+          Array.isArray(error.data.telefono)
+            ? error.data.telefono[0]
+            : error.data.telefono
+        );
+
+        return;
+      }
+
+      if (error.data?.fecha_nacimiento) {
+        setProfileError(
+          Array.isArray(error.data.fecha_nacimiento)
+            ? error.data.fecha_nacimiento[0]
+            : error.data.fecha_nacimiento
+        );
+
+        return;
+      }
+
+      setProfileError("No se pudieron guardar los cambios.");
+    }
   };
 
   const handleLogout = async () => {
@@ -97,6 +314,22 @@ export default function Profile() {
 
   const data = isEditing ? draft : profile;
 
+  if (loadingProfile) {
+    return (
+      <div className="min-h-screen bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-neutral-100">
+        <Header />
+
+        <main className="mx-auto max-w-7xl px-4 pb-32 pt-8 sm:px-6 lg:px-8">
+          <p className="text-center text-slate-500 dark:text-neutral-400">
+            Cargando perfil...
+          </p>
+        </main>
+
+        <BottomNavbar />
+      </div>
+    );
+  }
+
   return (
     <div
       className="
@@ -118,6 +351,12 @@ export default function Profile() {
             Administra tu información personal, estadísticas y preferencias.
           </p>
         </div>
+
+        {profileError && (
+          <p className="mb-4 text-center text-sm text-red-500">
+            {profileError}
+          </p>
+        )}
 
         {/* Sección principal que agrupa todo el perfil */}
         <section
@@ -166,31 +405,13 @@ export default function Profile() {
                 src={data.photo}
                 alt={data.fullName}
                 editable={isEditing}
-                onChangePhoto={setField("photo")}
+                onChangePhoto={handleChangePhoto}
               />
 
               <div className="mt-5 text-center">
-                {isEditing ? (
-                  <input
-                    value={draft.fullName}
-                    aria-label="Nombre y apellido"
-                    onChange={(event) =>
-                      setField("fullName")(event.target.value)
-                    }
-                    className="
-                      w-full rounded-lg border border-slate-300
-                      bg-white px-3 py-2 text-center text-xl
-                      font-bold text-slate-900 outline-none
-                      transition-colors focus:border-green-500
-                      dark:border-slate-950 dark:bg-slate-900
-                      dark:text-neutral-100
-                    "
-                  />
-                ) : (
-                  <h2 className="text-2xl font-bold">
-                    {data.fullName}
-                  </h2>
-                )}
+                <h2 className="text-2xl font-bold">
+                  {profile.fullName}
+                </h2>
 
                 {/* El nombre de usuario nunca es editable */}
                 <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
@@ -199,13 +420,23 @@ export default function Profile() {
               </div>
 
               <div className="mt-6 space-y-3">
-                <InfoRow
-                  icon={Calendar}
-                  value={data.age}
-                  editable={isEditing}
-                  onChange={setField("age")}
-                  ariaLabel="Edad"
-                />
+                {isEditing ? (
+                  <InfoRow
+                    icon={Calendar}
+                    value={draft.birthDate}
+                    editable
+                    onChange={setField("birthDate")}
+                    type="date"
+                    max={TODAY}
+                    ariaLabel="Fecha de nacimiento"
+                  />
+                ) : (
+                  <InfoRow
+                    icon={Calendar}
+                    value={profile.age}
+                    ariaLabel="Edad"
+                  />
+                )}
 
                 {/* El correo nunca es editable */}
                 <InfoRow
@@ -216,9 +447,16 @@ export default function Profile() {
 
                 <InfoRow
                   icon={Phone}
-                  value={data.phone}
+                  value={
+                    isEditing &&
+                    draft.phone === "Sin especificar"
+                      ? ""
+                      : data.phone
+                  }
                   editable={isEditing}
                   onChange={setField("phone")}
+                  type="tel"
+                  numericOnly
                   ariaLabel="Teléfono"
                 />
               </div>

@@ -2,6 +2,7 @@ from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 from django.db import transaction
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.utils import timezone
 
 from rest_framework import serializers
 
@@ -43,8 +44,6 @@ class RegisterSerializer(serializers.Serializer):
     )
 
 
-
-
     def validate(self, data):
 
         if data["password"] != data["confirm_password"]:
@@ -65,7 +64,7 @@ class RegisterSerializer(serializers.Serializer):
             raise serializers.ValidationError({
                 "email": "Ya existe una cuenta con ese email."
             })
-        
+
         if data["password"].isdigit():
             raise serializers.ValidationError({
                 "password": "La contraseña no puede estar formada solamente por números."
@@ -142,8 +141,43 @@ class RegisterSerializer(serializers.Serializer):
 
         return user
 
+
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(
         write_only=True
     )
+
+
+class PerfilUpdateSerializer(serializers.ModelSerializer):
+
+    def validate_telefono(self, value):
+
+        if value and not value.isdigit():
+            raise serializers.ValidationError(
+                "El teléfono debe contener solamente números."
+            )
+
+        return value
+
+
+    def validate_fecha_nacimiento(self, value):
+
+        if value and value > timezone.localdate():
+            raise serializers.ValidationError(
+                "La fecha de nacimiento no puede ser futura."
+            )
+
+        return value
+
+
+    class Meta:
+        model = Perfil
+        fields = (
+            "fecha_nacimiento",
+            "telefono",
+            "posicion",
+            "pierna_habil",
+            "bio",
+            "foto",
+        )

@@ -2,10 +2,14 @@ const API_URL = "http://127.0.0.1:8000/api";
 
 
 async function request(endpoint, options = {}) {
+  const isFormData = options.body instanceof FormData;
+
   const response = await fetch(`${API_URL}${endpoint}`, {
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      ...(isFormData
+        ? {}
+        : { "Content-Type": "application/json" }),
       ...options.headers,
     },
   });
@@ -65,5 +69,21 @@ export function logoutUser(token) {
     headers: {
       Authorization: `Token ${token}`,
     },
+  });
+}
+
+
+export function updateMe(token, datos) {
+  const body =
+    datos instanceof FormData
+      ? datos
+      : JSON.stringify(datos);
+
+  return request("/me/", {
+    method: "PATCH",
+    headers: {
+      Authorization: `Token ${token}`,
+    },
+    body,
   });
 }

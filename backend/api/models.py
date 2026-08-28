@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
+from django.utils import timezone
 
 
 class Perfil(models.Model):
@@ -19,8 +20,7 @@ class Perfil(models.Model):
         choices=Rol.choices
     )
 
-    # Datos que el usuario podrá completar/editar desde su perfil
-    edad = models.PositiveIntegerField(
+    fecha_nacimiento = models.DateField(
         null=True,
         blank=True
     )
@@ -43,6 +43,31 @@ class Perfil(models.Model):
     bio = models.TextField(
         blank=True
     )
+
+    foto = models.ImageField(
+        upload_to="perfiles/",
+        null=True,
+        blank=True
+    )
+
+    @property
+    def edad(self):
+        if not self.fecha_nacimiento:
+            return None
+
+        hoy = timezone.localdate()
+
+        return (
+            hoy.year
+            - self.fecha_nacimiento.year
+            - (
+                (hoy.month, hoy.day)
+                < (
+                    self.fecha_nacimiento.month,
+                    self.fecha_nacimiento.day
+                )
+            )
+        )
 
     def __str__(self):
         return f"{self.usuario.username} - {self.get_rol_display()}"

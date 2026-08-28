@@ -13,7 +13,11 @@ from rest_framework.response import Response
 from rest_framework import status
 
 from .models import Perfil, SolicitudDueno
-from .serializers import RegisterSerializer, LoginSerializer
+from .serializers import (
+    RegisterSerializer,
+    LoginSerializer,
+    PerfilUpdateSerializer,
+)
 
 
 @api_view(["GET"])
@@ -149,12 +153,58 @@ def login(request):
     )
 
 
-@api_view(["GET"])
+@api_view(["GET", "PATCH"])
 @authentication_classes([TokenAuthentication])
 @permission_classes([IsAuthenticated])
 def me(request):
 
     user = request.user
+
+    if request.method == "PATCH":
+
+        if user.is_superuser:
+            return Response(
+                {
+                    "mensaje": (
+                        "El administrador no tiene "
+                        "un perfil editable."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        perfil = user.perfil
+
+        serializer = PerfilUpdateSerializer(
+            perfil,
+            data=request.data,
+            partial=True
+        )
+
+        if serializer.is_valid():
+            perfil_actualizado = serializer.save()
+
+            datos_perfil = dict(serializer.data)
+
+            datos_perfil["edad"] = perfil_actualizado.edad
+
+            datos_perfil["foto"] = (
+                request.build_absolute_uri(
+                    perfil_actualizado.foto.url
+                )
+                if perfil_actualizado.foto
+                else None
+            )
+
+            return Response({
+                "mensaje": "Perfil actualizado correctamente.",
+                "perfil": datos_perfil,
+            })
+
+        return Response(
+            serializer.errors,
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
     if user.is_superuser:
         return Response({
@@ -171,11 +221,21 @@ def me(request):
         "username": user.username,
         "email": user.email,
         "rol": perfil.rol,
+        "fecha_nacimiento": (
+            perfil.fecha_nacimiento.isoformat()
+            if perfil.fecha_nacimiento
+            else None
+        ),
         "edad": perfil.edad,
         "telefono": perfil.telefono,
         "posicion": perfil.posicion,
         "pierna_habil": perfil.pierna_habil,
         "bio": perfil.bio,
+        "foto": (
+            request.build_absolute_uri(perfil.foto.url)
+            if perfil.foto
+            else None
+        ),
     }
 
     if perfil.rol == Perfil.Rol.DUENO_CANCHA:
