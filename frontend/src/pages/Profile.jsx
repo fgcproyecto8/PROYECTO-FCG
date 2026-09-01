@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 
 import {
   BarChart3,
@@ -22,6 +22,7 @@ import Avatar from "../components/Avatar";
 
 import {
   getMe,
+  getUsuarioDetalle,
   updateMe,
   logoutUser,
 } from "../services/api.js";
@@ -73,6 +74,9 @@ const EMPTY_PROFILE = {
 
 export default function Profile() {
   const navigate = useNavigate();
+  const { usuarioId } = useParams();
+
+  const esPerfilPropio = !usuarioId;
 
   const [profile, setProfile] = useState(EMPTY_PROFILE);
   const [draft, setDraft] = useState(EMPTY_PROFILE);
@@ -94,23 +98,39 @@ export default function Profile() {
       }
 
       try {
-        const data = await getMe(token);
+        const data = esPerfilPropio
+          ? await getMe(token)
+          : await getUsuarioDetalle(token, usuarioId);
 
         const realProfile = {
           ...EMPTY_PROFILE,
+
           fullName: data.username,
+
           username: `@${data.username}`,
+
           birthDate: data.fecha_nacimiento || "",
+
           age:
             data.edad !== null && data.edad !== undefined
               ? `${data.edad} años`
               : "Sin especificar",
-          email: data.email,
+
+          email: data.email || "",
+
           phone: data.telefono || "Sin especificar",
+
           position: data.posicion || "",
+
           leg: data.pierna_habil || "",
+
           bio: data.bio || "Sin biografía.",
+
           photo: data.foto || DEFAULT_AVATAR,
+
+          matchesPlayed: 0,
+          rating: 0,
+          reviews: 0,
         };
 
         setProfile(realProfile);
@@ -129,14 +149,18 @@ export default function Profile() {
           return;
         }
 
-        setProfileError("No se pudo cargar tu perfil.");
+        setProfileError(
+          esPerfilPropio
+            ? "No se pudo cargar tu perfil."
+            : "No se pudo cargar el perfil del jugador."
+        );
       } finally {
         setLoadingProfile(false);
       }
     };
 
     loadProfile();
-  }, [navigate]);
+  }, [navigate, usuarioId, esPerfilPropio]);
 
   const setField = (field) => (value) => {
     setDraft((previousDraft) => ({
@@ -233,18 +257,23 @@ export default function Profile() {
 
       const updatedProfile = {
         ...draft,
+
         birthDate:
           response.perfil?.fecha_nacimiento ||
           draft.birthDate,
+
         age:
           response.perfil?.edad !== null &&
           response.perfil?.edad !== undefined
             ? `${response.perfil.edad} años`
             : "Sin especificar",
+
         phone:
           telefono || "Sin especificar",
+
         bio:
           bio || "Sin biografía.",
+
         photo:
           response.perfil?.foto ||
           profile.photo,
@@ -256,7 +285,10 @@ export default function Profile() {
       setProfileError("");
       setIsEditing(false);
     } catch (error) {
-      console.error("Error al actualizar el perfil:", error);
+      console.error(
+        "Error al actualizar el perfil:",
+        error
+      );
 
       if (error.status === 401) {
         localStorage.removeItem("token");
@@ -281,7 +313,9 @@ export default function Profile() {
 
       if (error.data?.fecha_nacimiento) {
         setProfileError(
-          Array.isArray(error.data.fecha_nacimiento)
+          Array.isArray(
+            error.data.fecha_nacimiento
+          )
             ? error.data.fecha_nacimiento[0]
             : error.data.fecha_nacimiento
         );
@@ -289,7 +323,9 @@ export default function Profile() {
         return;
       }
 
-      setProfileError("No se pudieron guardar los cambios.");
+      setProfileError(
+        "No se pudieron guardar los cambios."
+      );
     }
   };
 
@@ -301,7 +337,10 @@ export default function Profile() {
         await logoutUser(token);
       }
     } catch (error) {
-      console.error("Error al cerrar sesión:", error);
+      console.error(
+        "Error al cerrar sesión:",
+        error
+      );
     } finally {
       localStorage.removeItem("token");
       localStorage.removeItem("user");
@@ -312,7 +351,9 @@ export default function Profile() {
     }
   };
 
-  const data = isEditing ? draft : profile;
+  const data = isEditing
+    ? draft
+    : profile;
 
   if (loadingProfile) {
     return (
@@ -341,14 +382,20 @@ export default function Profile() {
       <Header />
 
       <main className="mx-auto max-w-7xl px-4 pb-32 pt-8 sm:px-6 lg:px-8">
-        {/* Encabezado de la pantalla */}
+
+        {/* Encabezado */}
+
         <div className="mb-7">
           <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
-            Mi perfil
+            {esPerfilPropio
+              ? "Mi perfil"
+              : "Perfil de jugador"}
           </h1>
 
           <p className="mt-2 text-sm text-slate-600 dark:text-neutral-400 sm:text-base">
-            Administra tu información personal, estadísticas y preferencias.
+            {esPerfilPropio
+              ? "Administra tu información personal, estadísticas y preferencias."
+              : "Información pública del jugador."}
           </p>
         </div>
 
@@ -358,7 +405,6 @@ export default function Profile() {
           </p>
         )}
 
-        {/* Sección principal que agrupa todo el perfil */}
         <section
           className="
             rounded-3xl border border-slate-200
@@ -369,43 +415,67 @@ export default function Profile() {
           "
         >
           {/* Encabezado interno */}
+
           <div className="mb-6 flex items-center justify-between gap-4 border-b border-slate-200 pb-5 dark:border-slate-950">
+
             <div>
               <h2 className="text-lg font-bold text-slate-900 dark:text-neutral-100">
                 Perfil de jugador
               </h2>
 
               <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
-                Tu información, estadísticas y preferencias.
+                {esPerfilPropio
+                  ? "Tu información, estadísticas y preferencias."
+                  : "Información, estadísticas y preferencias del jugador."}
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={() => navigate("/amigos")}
-              className="
-                flex shrink-0 items-center gap-2
-                rounded-xl px-4 py-2.5
-                font-semibold text-slate-700
-                transition-colors hover:bg-slate-100
-                dark:text-neutral-200
-                dark:hover:bg-neutral-800
-              "
-            >
-              <Users size={19} className="text-green-500" />
-              <span>Amigos</span>
-              <ChevronRight size={17} />
-            </button>
+            {esPerfilPropio && (
+              <button
+                type="button"
+                onClick={() =>
+                  navigate("/amigos")
+                }
+                className="
+                  flex shrink-0 items-center gap-2
+                  rounded-xl px-4 py-2.5
+                  font-semibold text-slate-700
+                  transition-colors hover:bg-slate-100
+                  dark:text-neutral-200
+                  dark:hover:bg-neutral-800
+                "
+              >
+                <Users
+                  size={19}
+                  className="text-green-500"
+                />
+
+                <span>Amigos</span>
+
+                <ChevronRight size={17} />
+              </button>
+            )}
           </div>
 
           <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-3">
+
             {/* Información personal */}
-            <Card icon={User} title="Información personal" className="h-fit">
+
+            <Card
+              icon={User}
+              title="Información personal"
+              className="h-fit"
+            >
               <Avatar
                 src={data.photo}
                 alt={data.fullName}
-                editable={isEditing}
-                onChangePhoto={handleChangePhoto}
+                editable={
+                  esPerfilPropio &&
+                  isEditing
+                }
+                onChangePhoto={
+                  handleChangePhoto
+                }
               />
 
               <div className="mt-5 text-center">
@@ -413,19 +483,22 @@ export default function Profile() {
                   {profile.fullName}
                 </h2>
 
-                {/* El nombre de usuario nunca es editable */}
                 <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
                   {profile.username}
                 </p>
               </div>
 
               <div className="mt-6 space-y-3">
-                {isEditing ? (
+
+                {esPerfilPropio &&
+                isEditing ? (
                   <InfoRow
                     icon={Calendar}
                     value={draft.birthDate}
                     editable
-                    onChange={setField("birthDate")}
+                    onChange={setField(
+                      "birthDate"
+                    )}
                     type="date"
                     max={TODAY}
                     ariaLabel="Fecha de nacimiento"
@@ -438,31 +511,38 @@ export default function Profile() {
                   />
                 )}
 
-                {/* El correo nunca es editable */}
-                <InfoRow
-                  icon={Mail}
-                  value={profile.email}
-                  ariaLabel="Correo electrónico"
-                />
+                {esPerfilPropio && (
+                  <>
+                    <InfoRow
+                      icon={Mail}
+                      value={profile.email}
+                      ariaLabel="Correo electrónico"
+                    />
 
-                <InfoRow
-                  icon={Phone}
-                  value={
-                    isEditing &&
-                    draft.phone === "Sin especificar"
-                      ? ""
-                      : data.phone
-                  }
-                  editable={isEditing}
-                  onChange={setField("phone")}
-                  type="tel"
-                  numericOnly
-                  ariaLabel="Teléfono"
-                />
+                    <InfoRow
+                      icon={Phone}
+                      value={
+                        isEditing &&
+                        draft.phone ===
+                          "Sin especificar"
+                          ? ""
+                          : data.phone
+                      }
+                      editable={isEditing}
+                      onChange={setField(
+                        "phone"
+                      )}
+                      type="tel"
+                      numericOnly
+                      ariaLabel="Teléfono"
+                    />
+                  </>
+                )}
               </div>
             </Card>
 
             {/* Estadísticas */}
+
             <Card
               icon={BarChart3}
               title="Estadísticas"
@@ -496,18 +576,24 @@ export default function Profile() {
                 </p>
 
                 <div className="mt-3 flex flex-wrap items-center gap-3">
+
                   <div className="flex gap-1">
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <Star
-                        key={star}
-                        size={20}
-                        className={
-                          star <= Math.round(profile.rating)
-                            ? "fill-green-500 text-green-500 dark:fill-green-400 dark:text-green-400"
-                            : "text-slate-300 dark:text-neutral-600"
-                        }
-                      />
-                    ))}
+                    {[1, 2, 3, 4, 5].map(
+                      (star) => (
+                        <Star
+                          key={star}
+                          size={20}
+                          className={
+                            star <=
+                            Math.round(
+                              profile.rating
+                            )
+                              ? "fill-green-500 text-green-500 dark:fill-green-400 dark:text-green-400"
+                              : "text-slate-300 dark:text-neutral-600"
+                          }
+                        />
+                      )
+                    )}
                   </div>
 
                   <p className="text-2xl font-bold">
@@ -520,12 +606,15 @@ export default function Profile() {
                 </div>
 
                 <p className="mt-3 text-sm text-slate-500 dark:text-neutral-400">
-                  Basado en {profile.reviews} reseñas de compañeros.
+                  Basado en{" "}
+                  {profile.reviews}{" "}
+                  reseñas de compañeros.
                 </p>
               </div>
             </Card>
 
             {/* Preferencias */}
+
             <Card
               icon={Settings}
               title="Preferencias"
@@ -536,15 +625,27 @@ export default function Profile() {
               </p>
 
               <div className="mt-3 flex flex-wrap gap-2">
-                {POSITIONS.map((position) => (
-                  <OptionPill
-                    key={position}
-                    label={position}
-                    selected={data.position === position}
-                    disabled={!isEditing}
-                    onClick={() => setField("position")(position)}
-                  />
-                ))}
+                {POSITIONS.map(
+                  (position) => (
+                    <OptionPill
+                      key={position}
+                      label={position}
+                      selected={
+                        data.position ===
+                        position
+                      }
+                      disabled={
+                        !esPerfilPropio ||
+                        !isEditing
+                      }
+                      onClick={() =>
+                        setField(
+                          "position"
+                        )(position)
+                      }
+                    />
+                  )
+                )}
               </div>
 
               <p className="mt-6 text-sm font-medium text-slate-600 dark:text-neutral-400">
@@ -552,15 +653,26 @@ export default function Profile() {
               </p>
 
               <div className="mt-3 flex flex-wrap gap-2">
-                {LEGS.map((leg) => (
-                  <OptionPill
-                    key={leg}
-                    label={leg}
-                    selected={data.leg === leg}
-                    disabled={!isEditing}
-                    onClick={() => setField("leg")(leg)}
-                  />
-                ))}
+                {LEGS.map(
+                  (leg) => (
+                    <OptionPill
+                      key={leg}
+                      label={leg}
+                      selected={
+                        data.leg === leg
+                      }
+                      disabled={
+                        !esPerfilPropio ||
+                        !isEditing
+                      }
+                      onClick={() =>
+                        setField(
+                          "leg"
+                        )(leg)
+                      }
+                    />
+                  )
+                )}
               </div>
 
               <p className="mt-6 text-sm font-medium text-slate-600 dark:text-neutral-400">
@@ -569,11 +681,16 @@ export default function Profile() {
 
               <textarea
                 value={data.bio}
-                readOnly={!isEditing}
+                readOnly={
+                  !esPerfilPropio ||
+                  !isEditing
+                }
                 aria-label="Biografía"
                 rows={6}
                 onChange={(event) =>
-                  setField("bio")(event.target.value)
+                  setField(
+                    "bio"
+                  )(event.target.value)
                 }
                 className={`
                   mt-3 w-full resize-none rounded-xl border
@@ -583,6 +700,7 @@ export default function Profile() {
                   dark:border-slate-950 dark:bg-slate-900
                   dark:text-neutral-100
                   ${
+                    esPerfilPropio &&
                     isEditing
                       ? "focus:border-green-500"
                       : "cursor-default"
@@ -593,63 +711,68 @@ export default function Profile() {
           </div>
         </section>
 
-        {/* Acciones generales del perfil */}
-        <div className="mx-auto mt-6 max-w-xl space-y-3">
-          {isEditing ? (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {/* Acciones solamente en mi perfil */}
+
+        {esPerfilPropio && (
+          <div className="mx-auto mt-6 max-w-xl space-y-3">
+
+            {isEditing ? (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+
+                <button
+                  type="button"
+                  onClick={saveChanges}
+                  className="
+                    w-full rounded-xl bg-green-500 py-4
+                    font-bold text-neutral-950
+                    transition-colors hover:bg-green-400
+                  "
+                >
+                  Guardar cambios
+                </button>
+
+                <button
+                  type="button"
+                  onClick={cancelEditing}
+                  className="
+                    w-full rounded-xl border border-slate-300
+                    bg-white py-4 font-semibold text-slate-700
+                    transition-colors hover:bg-slate-100
+                    dark:border-neutral-700 dark:bg-slate-950
+                    dark:text-neutral-200 dark:hover:bg-neutral-800
+                  "
+                >
+                  Cancelar
+                </button>
+              </div>
+            ) : (
               <button
                 type="button"
-                onClick={saveChanges}
+                onClick={startEditing}
                 className="
                   w-full rounded-xl bg-green-500 py-4
                   font-bold text-neutral-950
                   transition-colors hover:bg-green-400
                 "
               >
-                Guardar cambios
+                Editar perfil
               </button>
+            )}
 
-              <button
-                type="button"
-                onClick={cancelEditing}
-                className="
-                  w-full rounded-xl border border-slate-300
-                  bg-white py-4 font-semibold text-slate-700
-                  transition-colors hover:bg-slate-100
-                  dark:border-neutral-700 dark:bg-slate-950
-                  dark:text-neutral-200 dark:hover:bg-neutral-800
-                "
-              >
-                Cancelar
-              </button>
-            </div>
-          ) : (
             <button
               type="button"
-              onClick={startEditing}
+              onClick={handleLogout}
               className="
-                w-full rounded-xl bg-green-500 py-4
-                font-bold text-neutral-950
-                transition-colors hover:bg-green-400
+                w-full rounded-xl border border-red-500/60
+                bg-transparent py-4 font-semibold text-red-500
+                transition-colors hover:bg-red-500/10
+                dark:text-red-400
               "
             >
-              Editar perfil
+              Cerrar sesión
             </button>
-          )}
-
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="
-              w-full rounded-xl border border-red-500/60
-              bg-transparent py-4 font-semibold text-red-500
-              transition-colors hover:bg-red-500/10
-              dark:text-red-400
-            "
-          >
-            Cerrar sesión
-          </button>
-        </div>
+          </div>
+        )}
       </main>
 
       <BottomNavbar />

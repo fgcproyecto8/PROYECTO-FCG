@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate } from "react-router-dom";
+
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Home from "./pages/Home";
@@ -30,10 +31,21 @@ function App() {
       {/* Canchas */}
       <Route path="/canchas" element={<Canchas />} />
       <Route path="/canchas/nueva" element={<CanchaForm />} />
-      <Route path="/canchas/:id/editar" element={<CanchaForm />} />
+      <Route
+        path="/canchas/:id/editar"
+        element={<CanchaForm />}
+      />
 
-      {/* Perfil */}
+      {/* Perfil propio */}
       <Route path="/perfil" element={<Profile />} />
+
+      {/* Perfil público de otro jugador */}
+      <Route
+        path="/usuarios/:usuarioId"
+        element={<Profile />}
+      />
+
+      {/* Amigos */}
       <Route path="/amigos" element={<Friends />} />
     </Routes>
   );

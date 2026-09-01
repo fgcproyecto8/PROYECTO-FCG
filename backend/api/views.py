@@ -1,5 +1,6 @@
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
+from django.db.models import Q
 
 from rest_framework.authtoken.models import Token
 from rest_framework.authentication import TokenAuthentication
@@ -17,6 +18,7 @@ from .serializers import (
     RegisterSerializer,
     LoginSerializer,
     PerfilUpdateSerializer,
+    UsuarioPublicoSerializer,
 )
 
 
@@ -266,3 +268,67 @@ def logout(request):
     return Response({
         "mensaje": "Sesión cerrada correctamente."
     })
+
+@api_view(["GET"])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def usuarios(request):
+
+    search = request.GET.get(
+        "search",
+        ""
+    ).strip()
+
+    jugadores = User.objects.filter(
+        perfil__rol=Perfil.Rol.JUGADOR
+    ).exclude(
+        id=request.user.id
+    )
+
+    if search:
+        jugadores = jugadores.filter(
+            Q(username__icontains=search)
+            | Q(perfil__posicion__icontains=search)
+        )
+
+    jugadores = jugadores.order_by(
+        "username"
+    )
+
+    serializer = UsuarioPublicoSerializer(
+        jugadores,
+        many=True,
+        context={
+            "request": request
+        }
+    )
+
+    return Response(serializer.data)
+
+
+@api_view(["GET"])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def usuario_detalle(request, usuario_id):
+
+    usuario = User.objects.filter(
+        id=usuario_id,
+        perfil__rol=Perfil.Rol.JUGADOR
+    ).first()
+
+    if usuario is None:
+        return Response(
+            {
+                "mensaje": "Jugador no encontrado."
+            },
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    serializer = UsuarioPublicoSerializer(
+        usuario,
+        context={
+            "request": request
+        }
+    )
+
+    return Response(serializer.data)

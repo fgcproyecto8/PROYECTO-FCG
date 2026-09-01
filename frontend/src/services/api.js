@@ -24,7 +24,8 @@ async function request(endpoint, options = {}) {
 
   if (!response.ok) {
     const error = new Error(
-      data.mensaje || "Ocurrió un error al comunicarse con el servidor."
+      data.mensaje ||
+        "Ocurrió un error al comunicarse con el servidor."
     );
 
     error.status = response.status;
@@ -85,5 +86,29 @@ export function updateMe(token, datos) {
       Authorization: `Token ${token}`,
     },
     body,
+  });
+}
+
+
+export function getUsuarios(token, search = "") {
+  const query = search.trim()
+    ? `?search=${encodeURIComponent(search.trim())}`
+    : "";
+
+  return request(`/usuarios/${query}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Token ${token}`,
+    },
+  });
+}
+
+
+export function getUsuarioDetalle(token, usuarioId) {
+  return request(`/usuarios/${usuarioId}/`, {
+    method: "GET",
+    headers: {
+      Authorization: `Token ${token}`,
+    },
   });
 }

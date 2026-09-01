@@ -181,3 +181,52 @@ class PerfilUpdateSerializer(serializers.ModelSerializer):
             "bio",
             "foto",
         )
+
+class UsuarioPublicoSerializer(serializers.ModelSerializer):
+    edad = serializers.IntegerField(
+        source="perfil.edad",
+        read_only=True
+    )
+
+    posicion = serializers.CharField(
+        source="perfil.posicion",
+        read_only=True
+    )
+
+    pierna_habil = serializers.CharField(
+        source="perfil.pierna_habil",
+        read_only=True
+    )
+
+    bio = serializers.CharField(
+        source="perfil.bio",
+        read_only=True
+    )
+
+    foto = serializers.SerializerMethodField()
+
+    def get_foto(self, user):
+        request = self.context.get("request")
+
+        if not user.perfil.foto:
+            return None
+
+        if request:
+            return request.build_absolute_uri(
+                user.perfil.foto.url
+            )
+
+        return user.perfil.foto.url
+
+    class Meta:
+        model = User
+
+        fields = (
+            "id",
+            "username",
+            "edad",
+            "posicion",
+            "pierna_habil",
+            "bio",
+            "foto",
+        )
