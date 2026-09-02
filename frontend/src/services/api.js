@@ -38,6 +38,8 @@ async function request(endpoint, options = {}) {
 }
 
 
+// REGISTRO
+
 export function registerUser(datos) {
   return request("/register/", {
     method: "POST",
@@ -45,6 +47,8 @@ export function registerUser(datos) {
   });
 }
 
+
+// LOGIN
 
 export function loginUser(datos) {
   return request("/login/", {
@@ -54,19 +58,11 @@ export function loginUser(datos) {
 }
 
 
+// MI PERFIL
+
 export function getMe(token) {
   return request("/me/", {
     method: "GET",
-    headers: {
-      Authorization: `Token ${token}`,
-    },
-  });
-}
-
-
-export function logoutUser(token) {
-  return request("/logout/", {
-    method: "POST",
     headers: {
       Authorization: `Token ${token}`,
     },
@@ -90,6 +86,20 @@ export function updateMe(token, datos) {
 }
 
 
+// LOGOUT
+
+export function logoutUser(token) {
+  return request("/logout/", {
+    method: "POST",
+    headers: {
+      Authorization: `Token ${token}`,
+    },
+  });
+}
+
+
+// USUARIOS
+
 export function getUsuarios(token, search = "") {
   const query = search.trim()
     ? `?search=${encodeURIComponent(search.trim())}`
@@ -104,11 +114,144 @@ export function getUsuarios(token, search = "") {
 }
 
 
-export function getUsuarioDetalle(token, usuarioId) {
-  return request(`/usuarios/${usuarioId}/`, {
-    method: "GET",
-    headers: {
-      Authorization: `Token ${token}`,
-    },
-  });
+export function getUsuarioDetalle(
+  token,
+  usuarioId
+) {
+  return request(
+    `/usuarios/${usuarioId}/`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Token ${token}`,
+      },
+    }
+  );
+}
+
+
+// REPUTACIÓN
+
+export function calificarUsuario(
+  token,
+  usuarioId,
+  valor
+) {
+  return request(
+    `/usuarios/${usuarioId}/calificar/`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Token ${token}`,
+      },
+      body: JSON.stringify({
+        valor,
+      }),
+    }
+  );
+}
+
+
+// ENVIAR SOLICITUD DE AMISTAD
+
+export function enviarSolicitudAmistad(
+  token,
+  destinatarioId
+) {
+  return request(
+    "/amistades/solicitudes/enviar/",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Token ${token}`,
+      },
+      body: JSON.stringify({
+        destinatario_id: destinatarioId,
+      }),
+    }
+  );
+}
+
+
+// SOLICITUDES RECIBIDAS
+
+export function getSolicitudesAmistad(token) {
+  return request(
+    "/amistades/solicitudes/",
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Token ${token}`,
+      },
+    }
+  );
+}
+
+
+// ACEPTAR SOLICITUD
+
+export function aceptarSolicitudAmistad(
+  token,
+  solicitudId
+) {
+  return request(
+    `/amistades/solicitudes/${solicitudId}/aceptar/`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Token ${token}`,
+      },
+    }
+  );
+}
+
+
+// RECHAZAR SOLICITUD
+
+export function rechazarSolicitudAmistad(
+  token,
+  solicitudId
+) {
+  return request(
+    `/amistades/solicitudes/${solicitudId}/rechazar/`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Token ${token}`,
+      },
+    }
+  );
+}
+
+
+// LISTA DE AMIGOS
+
+export function getAmigos(token) {
+  return request(
+    "/amistades/",
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Token ${token}`,
+      },
+    }
+  );
+}
+
+
+// ELIMINAR AMIGO
+
+export function eliminarAmigo(
+  token,
+  usuarioId
+) {
+  return request(
+    `/amistades/${usuarioId}/`,
+    {
+      method: "DELETE",
+      headers: {
+        Authorization: `Token ${token}`,
+      },
+    }
+  );
 }

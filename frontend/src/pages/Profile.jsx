@@ -1,5 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import {
+  useLocation,
+  useNavigate,
+  useParams,
+} from "react-router-dom";
 
 import {
   BarChart3,
@@ -11,6 +15,9 @@ import {
   User,
   Users,
   ChevronRight,
+  ArrowLeft,
+  UserPlus,
+  Check,
 } from "lucide-react";
 
 import Header from "../components/Header";
@@ -25,6 +32,8 @@ import {
   getUsuarioDetalle,
   updateMe,
   logoutUser,
+  calificarUsuario,
+  enviarSolicitudAmistad,
 } from "../services/api.js";
 
 const POSITIONS = [
@@ -65,8 +74,6 @@ const EMPTY_PROFILE = {
   leg: "",
   bio: "",
   photo: DEFAULT_AVATAR,
-
-  // Hasta conectar partidos y reseñas reales
   matchesPlayed: 0,
   rating: 0,
   reviews: 0,
@@ -74,6 +81,8 @@ const EMPTY_PROFILE = {
 
 export default function Profile() {
   const navigate = useNavigate();
+  const location = useLocation();
+
   const { usuarioId } = useParams();
 
   const esPerfilPropio = !usuarioId;
@@ -84,6 +93,8 @@ export default function Profile() {
   const [isEditing, setIsEditing] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [profileError, setProfileError] = useState("");
+  const [miCalificacion, setMiCalificacion] = useState(0);
+  const [estadoAmistad, setEstadoAmistad] = useState("ninguna");
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -98,9 +109,15 @@ export default function Profile() {
       }
 
       try {
+        setLoadingProfile(true);
+        setProfileError("");
+
         const data = esPerfilPropio
           ? await getMe(token)
-          : await getUsuarioDetalle(token, usuarioId);
+          : await getUsuarioDetalle(
+              token,
+              usuarioId
+            );
 
         const realProfile = {
           ...EMPTY_PROFILE,
@@ -109,34 +126,67 @@ export default function Profile() {
 
           username: `@${data.username}`,
 
-          birthDate: data.fecha_nacimiento || "",
+          birthDate:
+            data.fecha_nacimiento || "",
 
           age:
-            data.edad !== null && data.edad !== undefined
+            data.edad !== null &&
+            data.edad !== undefined
               ? `${data.edad} años`
               : "Sin especificar",
 
-          email: data.email || "",
+          email:
+            data.email || "",
 
-          phone: data.telefono || "Sin especificar",
+          phone:
+            data.telefono ||
+            "Sin especificar",
 
-          position: data.posicion || "",
+          position:
+            data.posicion || "",
 
-          leg: data.pierna_habil || "",
+          leg:
+            data.pierna_habil || "",
 
-          bio: data.bio || "Sin biografía.",
+          bio:
+            data.bio ||
+            "Sin biografía.",
 
-          photo: data.foto || DEFAULT_AVATAR,
+          photo:
+            data.foto ||
+            DEFAULT_AVATAR,
 
           matchesPlayed: 0,
-          rating: 0,
-          reviews: 0,
+
+          rating: Number(
+            data.reputacion || 0
+          ),
+
+          reviews: Number(
+            data.cantidad_calificaciones || 0
+          ),
         };
 
         setProfile(realProfile);
         setDraft(realProfile);
+
+        setMiCalificacion(
+          Number(
+            data.mi_calificacion || 0
+          )
+        );
+
+        if (!esPerfilPropio) {
+          setEstadoAmistad(
+            data.estado_amistad ||
+            "ninguna"
+          );
+        }
       } catch (error) {
-        console.error("Error al cargar el perfil:", error);
+        console.error(
+          "Error al cargar el perfil:",
+          error
+        );
 
         if (error.status === 401) {
           localStorage.removeItem("token");
@@ -160,7 +210,11 @@ export default function Profile() {
     };
 
     loadProfile();
-  }, [navigate, usuarioId, esPerfilPropio]);
+  }, [
+    navigate,
+    usuarioId,
+    esPerfilPropio,
+  ]);
 
   const setField = (field) => (value) => {
     setDraft((previousDraft) => ({
@@ -169,7 +223,10 @@ export default function Profile() {
     }));
   };
 
-  const handleChangePhoto = (file, previewUrl) => {
+  const handleChangePhoto = (
+    file,
+    previewUrl
+  ) => {
     setPhotoFile(file);
 
     setDraft((previousDraft) => ({
@@ -192,8 +249,53 @@ export default function Profile() {
     setIsEditing(false);
   };
 
+  const handleAddFriend = async () => {
+    if (
+      esPerfilPropio ||
+      estadoAmistad !== "ninguna"
+    ) {
+      return;
+    }
+
+    const token =
+      localStorage.getItem("token");
+
+    if (!token) {
+      navigate("/login", {
+        replace: true,
+      });
+
+      return;
+    }
+
+    try {
+      const response =
+        await enviarSolicitudAmistad(
+          token,
+          usuarioId
+        );
+
+      setEstadoAmistad(
+        response.estado
+      );
+
+      setProfileError("");
+    } catch (error) {
+      console.error(
+        "Error al enviar solicitud:",
+        error
+      );
+
+      setProfileError(
+        error.data?.mensaje ||
+          "No se pudo enviar la solicitud."
+      );
+    }
+  };
+
   const saveChanges = async () => {
-    const token = localStorage.getItem("token");
+    const token =
+      localStorage.getItem("token");
 
     if (!token) {
       navigate("/login", {
@@ -250,29 +352,35 @@ export default function Profile() {
     }
 
     try {
-      const response = await updateMe(
-        token,
-        datos
-      );
+      const response =
+        await updateMe(
+          token,
+          datos
+        );
 
       const updatedProfile = {
         ...draft,
 
         birthDate:
-          response.perfil?.fecha_nacimiento ||
+          response.perfil
+            ?.fecha_nacimiento ||
           draft.birthDate,
 
         age:
-          response.perfil?.edad !== null &&
-          response.perfil?.edad !== undefined
+          response.perfil?.edad !==
+            null &&
+          response.perfil?.edad !==
+            undefined
             ? `${response.perfil.edad} años`
             : "Sin especificar",
 
         phone:
-          telefono || "Sin especificar",
+          telefono ||
+          "Sin especificar",
 
         bio:
-          bio || "Sin biografía.",
+          bio ||
+          "Sin biografía.",
 
         photo:
           response.perfil?.foto ||
@@ -291,8 +399,12 @@ export default function Profile() {
       );
 
       if (error.status === 401) {
-        localStorage.removeItem("token");
-        localStorage.removeItem("user");
+        localStorage.removeItem(
+          "token"
+        );
+        localStorage.removeItem(
+          "user"
+        );
 
         navigate("/login", {
           replace: true,
@@ -303,7 +415,9 @@ export default function Profile() {
 
       if (error.data?.telefono) {
         setProfileError(
-          Array.isArray(error.data.telefono)
+          Array.isArray(
+            error.data.telefono
+          )
             ? error.data.telefono[0]
             : error.data.telefono
         );
@@ -311,13 +425,19 @@ export default function Profile() {
         return;
       }
 
-      if (error.data?.fecha_nacimiento) {
+      if (
+        error.data
+          ?.fecha_nacimiento
+      ) {
         setProfileError(
           Array.isArray(
-            error.data.fecha_nacimiento
+            error.data
+              .fecha_nacimiento
           )
-            ? error.data.fecha_nacimiento[0]
-            : error.data.fecha_nacimiento
+            ? error.data
+                .fecha_nacimiento[0]
+            : error.data
+                .fecha_nacimiento
         );
 
         return;
@@ -329,8 +449,63 @@ export default function Profile() {
     }
   };
 
+  const handleRate = async (valor) => {
+    if (esPerfilPropio) {
+      return;
+    }
+
+    const token =
+      localStorage.getItem("token");
+
+    if (!token) {
+      navigate("/login", {
+        replace: true,
+      });
+
+      return;
+    }
+
+    try {
+      const response =
+        await calificarUsuario(
+          token,
+          usuarioId,
+          valor
+        );
+
+      setMiCalificacion(
+        response.mi_calificacion
+      );
+
+      setProfile(
+        (previousProfile) => ({
+          ...previousProfile,
+
+          rating:
+            response.reputacion,
+
+          reviews:
+            response.cantidad_calificaciones,
+        })
+      );
+
+      setProfileError("");
+    } catch (error) {
+      console.error(
+        "Error al calificar usuario:",
+        error
+      );
+
+      setProfileError(
+        error.data?.mensaje ||
+          "No se pudo guardar la calificación."
+      );
+    }
+  };
+
   const handleLogout = async () => {
-    const token = localStorage.getItem("token");
+    const token =
+      localStorage.getItem("token");
 
     try {
       if (token) {
@@ -342,13 +517,29 @@ export default function Profile() {
         error
       );
     } finally {
-      localStorage.removeItem("token");
-      localStorage.removeItem("user");
+      localStorage.removeItem(
+        "token"
+      );
+
+      localStorage.removeItem(
+        "user"
+      );
 
       navigate("/login", {
         replace: true,
       });
     }
+  };
+
+  const handleVolver = () => {
+    navigate("/amigos", {
+      state: {
+        activeTab:
+          location.state
+            ?.fromTab ||
+          "search",
+      },
+    });
   };
 
   const data = isEditing
@@ -358,15 +549,19 @@ export default function Profile() {
   if (loadingProfile) {
     return (
       <div className="min-h-screen bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-neutral-100">
+
         <Header />
 
         <main className="mx-auto max-w-7xl px-4 pb-32 pt-8 sm:px-6 lg:px-8">
+
           <p className="text-center text-slate-500 dark:text-neutral-400">
             Cargando perfil...
           </p>
+
         </main>
 
         <BottomNavbar />
+
       </div>
     );
   }
@@ -379,13 +574,13 @@ export default function Profile() {
         dark:bg-slate-950 dark:text-neutral-100
       "
     >
+
       <Header />
 
       <main className="mx-auto max-w-7xl px-4 pb-32 pt-8 sm:px-6 lg:px-8">
 
-        {/* Encabezado */}
-
         <div className="mb-7">
+
           <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
             {esPerfilPropio
               ? "Mi perfil"
@@ -397,6 +592,32 @@ export default function Profile() {
               ? "Administra tu información personal, estadísticas y preferencias."
               : "Información pública del jugador."}
           </p>
+
+          {!esPerfilPropio && (
+            <div className="mt-5">
+
+              <button
+                type="button"
+                onClick={
+                  handleVolver
+                }
+                className="
+                  flex items-center gap-2 rounded-xl
+                  border border-slate-300 bg-white
+                  px-4 py-2.5 font-semibold text-slate-700
+                  transition-colors hover:bg-slate-100
+                  dark:border-slate-700 dark:bg-slate-900
+                  dark:text-neutral-200 dark:hover:bg-slate-800
+                "
+              >
+                <ArrowLeft size={18} />
+
+                Volver
+              </button>
+
+            </div>
+          )}
+
         </div>
 
         {profileError && (
@@ -414,11 +635,11 @@ export default function Profile() {
             sm:p-6 lg:p-8
           "
         >
-          {/* Encabezado interno */}
 
           <div className="mb-6 flex items-center justify-between gap-4 border-b border-slate-200 pb-5 dark:border-slate-950">
 
             <div>
+
               <h2 className="text-lg font-bold text-slate-900 dark:text-neutral-100">
                 Perfil de jugador
               </h2>
@@ -428,13 +649,17 @@ export default function Profile() {
                   ? "Tu información, estadísticas y preferencias."
                   : "Información, estadísticas y preferencias del jugador."}
               </p>
+
             </div>
 
-            {esPerfilPropio && (
+            {esPerfilPropio ? (
+
               <button
                 type="button"
                 onClick={() =>
-                  navigate("/amigos")
+                  navigate(
+                    "/amigos"
+                  )
                 }
                 className="
                   flex shrink-0 items-center gap-2
@@ -450,22 +675,86 @@ export default function Profile() {
                   className="text-green-500"
                 />
 
-                <span>Amigos</span>
+                <span>
+                  Amigos
+                </span>
 
-                <ChevronRight size={17} />
+                <ChevronRight
+                  size={17}
+                />
               </button>
+
+            ) : (
+
+              <button
+                type="button"
+                disabled={
+                  estadoAmistad !==
+                  "ninguna"
+                }
+                onClick={
+                  handleAddFriend
+                }
+                className={`
+                  flex shrink-0 items-center gap-2
+                  rounded-xl px-4 py-2.5
+                  font-semibold transition-colors
+                  ${
+                    estadoAmistad ===
+                    "ninguna"
+                      ? "bg-green-500 text-white hover:bg-green-600"
+                      : "cursor-default bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+                  }
+                `}
+              >
+
+                {estadoAmistad ===
+                "amigos" ? (
+                  <>
+                    <Check
+                      size={18}
+                    />
+                    Amigos
+                  </>
+                ) : estadoAmistad ===
+                  "enviada" ? (
+                  <>
+                    <Check
+                      size={18}
+                    />
+                    Solicitud enviada
+                  </>
+                ) : estadoAmistad ===
+                  "recibida" ? (
+                  <>
+                    <Check
+                      size={18}
+                    />
+                    Solicitud recibida
+                  </>
+                ) : (
+                  <>
+                    <UserPlus
+                      size={18}
+                    />
+                    Añadir amigo
+                  </>
+                )}
+
+              </button>
+
             )}
+
           </div>
 
           <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-3">
-
-            {/* Información personal */}
 
             <Card
               icon={User}
               title="Información personal"
               className="h-fit"
             >
+
               <Avatar
                 src={data.photo}
                 alt={data.fullName}
@@ -479,22 +768,31 @@ export default function Profile() {
               />
 
               <div className="mt-5 text-center">
+
                 <h2 className="text-2xl font-bold">
-                  {profile.fullName}
+                  {
+                    profile.fullName
+                  }
                 </h2>
 
                 <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
-                  {profile.username}
+                  {
+                    profile.username
+                  }
                 </p>
+
               </div>
 
               <div className="mt-6 space-y-3">
 
                 {esPerfilPropio &&
                 isEditing ? (
+
                   <InfoRow
                     icon={Calendar}
-                    value={draft.birthDate}
+                    value={
+                      draft.birthDate
+                    }
                     editable
                     onChange={setField(
                       "birthDate"
@@ -503,19 +801,27 @@ export default function Profile() {
                     max={TODAY}
                     ariaLabel="Fecha de nacimiento"
                   />
+
                 ) : (
+
                   <InfoRow
                     icon={Calendar}
-                    value={profile.age}
+                    value={
+                      profile.age
+                    }
                     ariaLabel="Edad"
                   />
+
                 )}
 
                 {esPerfilPropio && (
                   <>
+
                     <InfoRow
                       icon={Mail}
-                      value={profile.email}
+                      value={
+                        profile.email
+                      }
                       ariaLabel="Correo electrónico"
                     />
 
@@ -528,7 +834,9 @@ export default function Profile() {
                           ? ""
                           : data.phone
                       }
-                      editable={isEditing}
+                      editable={
+                        isEditing
+                      }
                       onChange={setField(
                         "phone"
                       )}
@@ -536,18 +844,20 @@ export default function Profile() {
                       numericOnly
                       ariaLabel="Teléfono"
                     />
+
                   </>
                 )}
-              </div>
-            </Card>
 
-            {/* Estadísticas */}
+              </div>
+
+            </Card>
 
             <Card
               icon={BarChart3}
               title="Estadísticas"
               className="h-fit"
             >
+
               <div
                 className="
                   rounded-xl border border-slate-200
@@ -555,13 +865,17 @@ export default function Profile() {
                   dark:border-slate-950 dark:bg-slate-900
                 "
               >
+
                 <p className="text-6xl font-extrabold text-green-500 dark:text-green-400">
-                  {profile.matchesPlayed}
+                  {
+                    profile.matchesPlayed
+                  }
                 </p>
 
                 <p className="mt-2 text-sm tracking-widest text-slate-500 dark:text-neutral-400">
                   PARTIDOS JUGADOS
                 </p>
+
               </div>
 
               <div
@@ -571,6 +885,7 @@ export default function Profile() {
                   dark:border-slate-950 dark:bg-slate-900
                 "
               >
+
                 <p className="text-sm tracking-widest text-slate-600 dark:text-neutral-300">
                   REPUTACIÓN
                 </p>
@@ -578,8 +893,10 @@ export default function Profile() {
                 <div className="mt-3 flex flex-wrap items-center gap-3">
 
                   <div className="flex gap-1">
+
                     {[1, 2, 3, 4, 5].map(
                       (star) => (
+
                         <Star
                           key={star}
                           size={20}
@@ -592,8 +909,10 @@ export default function Profile() {
                               : "text-slate-300 dark:text-neutral-600"
                           }
                         />
+
                       )
                     )}
+
                   </div>
 
                   <p className="text-2xl font-bold">
@@ -603,6 +922,7 @@ export default function Profile() {
                       / 5.0
                     </span>
                   </p>
+
                 </div>
 
                 <p className="mt-3 text-sm text-slate-500 dark:text-neutral-400">
@@ -610,23 +930,71 @@ export default function Profile() {
                   {profile.reviews}{" "}
                   reseñas de compañeros.
                 </p>
-              </div>
-            </Card>
 
-            {/* Preferencias */}
+                {!esPerfilPropio && (
+
+                  <div className="mt-5 border-t border-slate-200 pt-4 dark:border-slate-700">
+
+                    <p className="mb-2 text-sm font-medium text-slate-600 dark:text-neutral-300">
+                      Tu calificación
+                    </p>
+
+                    <div className="flex gap-1">
+
+                      {[1, 2, 3, 4, 5].map(
+                        (star) => (
+
+                          <button
+                            key={star}
+                            type="button"
+                            onClick={() =>
+                              handleRate(
+                                star
+                              )
+                            }
+                            className="transition-transform hover:scale-110"
+                          >
+
+                            <Star
+                              size={26}
+                              className={
+                                star <=
+                                miCalificacion
+                                  ? "fill-green-500 text-green-500"
+                                  : "text-slate-300 dark:text-neutral-600"
+                              }
+                            />
+
+                          </button>
+
+                        )
+                      )}
+
+                    </div>
+
+                  </div>
+
+                )}
+
+              </div>
+
+            </Card>
 
             <Card
               icon={Settings}
               title="Preferencias"
               className="h-fit"
             >
+
               <p className="text-sm font-medium text-slate-600 dark:text-neutral-400">
                 Posición preferida
               </p>
 
               <div className="mt-3 flex flex-wrap gap-2">
+
                 {POSITIONS.map(
                   (position) => (
+
                     <OptionPill
                       key={position}
                       label={position}
@@ -644,8 +1012,10 @@ export default function Profile() {
                         )(position)
                       }
                     />
+
                   )
                 )}
+
               </div>
 
               <p className="mt-6 text-sm font-medium text-slate-600 dark:text-neutral-400">
@@ -653,13 +1023,16 @@ export default function Profile() {
               </p>
 
               <div className="mt-3 flex flex-wrap gap-2">
+
                 {LEGS.map(
                   (leg) => (
+
                     <OptionPill
                       key={leg}
                       label={leg}
                       selected={
-                        data.leg === leg
+                        data.leg ===
+                        leg
                       }
                       disabled={
                         !esPerfilPropio ||
@@ -671,8 +1044,10 @@ export default function Profile() {
                         )(leg)
                       }
                     />
+
                   )
                 )}
+
               </div>
 
               <p className="mt-6 text-sm font-medium text-slate-600 dark:text-neutral-400">
@@ -690,7 +1065,10 @@ export default function Profile() {
                 onChange={(event) =>
                   setField(
                     "bio"
-                  )(event.target.value)
+                  )(
+                    event.target
+                      .value
+                  )
                 }
                 className={`
                   mt-3 w-full resize-none rounded-xl border
@@ -707,21 +1085,26 @@ export default function Profile() {
                   }
                 `}
               />
+
             </Card>
+
           </div>
+
         </section>
 
-        {/* Acciones solamente en mi perfil */}
-
         {esPerfilPropio && (
+
           <div className="mx-auto mt-6 max-w-xl space-y-3">
 
             {isEditing ? (
+
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
 
                 <button
                   type="button"
-                  onClick={saveChanges}
+                  onClick={
+                    saveChanges
+                  }
                   className="
                     w-full rounded-xl bg-green-500 py-4
                     font-bold text-neutral-950
@@ -733,7 +1116,9 @@ export default function Profile() {
 
                 <button
                   type="button"
-                  onClick={cancelEditing}
+                  onClick={
+                    cancelEditing
+                  }
                   className="
                     w-full rounded-xl border border-slate-300
                     bg-white py-4 font-semibold text-slate-700
@@ -744,11 +1129,16 @@ export default function Profile() {
                 >
                   Cancelar
                 </button>
+
               </div>
+
             ) : (
+
               <button
                 type="button"
-                onClick={startEditing}
+                onClick={
+                  startEditing
+                }
                 className="
                   w-full rounded-xl bg-green-500 py-4
                   font-bold text-neutral-950
@@ -757,11 +1147,14 @@ export default function Profile() {
               >
                 Editar perfil
               </button>
+
             )}
 
             <button
               type="button"
-              onClick={handleLogout}
+              onClick={
+                handleLogout
+              }
               className="
                 w-full rounded-xl border border-red-500/60
                 bg-transparent py-4 font-semibold text-red-500
@@ -771,11 +1164,15 @@ export default function Profile() {
             >
               Cerrar sesión
             </button>
+
           </div>
+
         )}
+
       </main>
 
       <BottomNavbar />
+
     </div>
   );
 }

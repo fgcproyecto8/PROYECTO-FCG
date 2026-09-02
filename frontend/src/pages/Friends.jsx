@@ -1,5 +1,9 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import {
+  Link,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 
 import {
   ArrowLeft,
@@ -13,12 +17,13 @@ import BottomNavbar from "../components/BottomNavbar";
 import UserCard from "../components/UserCard";
 
 import {
-  REQUESTS_MOCK,
-  FRIENDS_MOCK,
-} from "../data/friends";
-
-import {
   getUsuarios,
+  enviarSolicitudAmistad,
+  getSolicitudesAmistad,
+  aceptarSolicitudAmistad,
+  rechazarSolicitudAmistad,
+  getAmigos,
+  eliminarAmigo,
 } from "../services/api.js";
 
 
@@ -31,29 +36,23 @@ const TABS = [
 
 export default function Friends() {
   const navigate = useNavigate();
+  const location = useLocation();
 
-  const [activeTab, setActiveTab] = useState("search");
+  const [activeTab, setActiveTab] = useState(
+    location.state?.activeTab || "search"
+  );
 
   const [term, setTerm] = useState("");
 
   const [players, setPlayers] = useState([]);
+  const [requests, setRequests] = useState([]);
+  const [friends, setFriends] = useState([]);
 
   const [loadingPlayers, setLoadingPlayers] =
     useState(true);
 
   const [playersError, setPlayersError] =
     useState("");
-
-  const [sentRequests, setSentRequests] =
-    useState([]);
-
-  const [requests, setRequests] = useState(() => [
-    ...REQUESTS_MOCK,
-  ]);
-
-  const [friends, setFriends] = useState(() => [
-    ...FRIENDS_MOCK,
-  ]);
 
 
   const adaptarUsuario = (usuario) => ({
@@ -64,13 +63,12 @@ export default function Friends() {
     username: usuario.username,
 
     position:
-      usuario.posicion || "Sin posición",
+      usuario.posicion ||
+      "Sin posición",
 
-    photo: usuario.foto || null,
-
-    avatar: usuario.foto || null,
-
-    image: usuario.foto || null,
+    photo:
+      usuario.foto ||
+      null,
 
     age:
       usuario.edad !== null &&
@@ -79,20 +77,34 @@ export default function Friends() {
         : null,
 
     leg:
-      usuario.pierna_habil || "",
+      usuario.pierna_habil ||
+      "",
 
     bio:
-      usuario.bio || "Sin biografía.",
+      usuario.bio ||
+      "Sin biografía.",
 
-    // Todavía no están conectados al backend
     matchesPlayed: 0,
-    rating: 0,
-    reviews: 0,
+
+    rating: Number(
+      usuario.reputacion || 0
+    ),
+
+    reviews: Number(
+      usuario.cantidad_calificaciones || 0
+    ),
+
+    friendshipStatus:
+      usuario.estado_amistad ||
+      "ninguna",
   });
 
 
-  const cargarJugadores = async (search = "") => {
-    const token = localStorage.getItem("token");
+  const cargarJugadores = async (
+    search = ""
+  ) => {
+    const token =
+      localStorage.getItem("token");
 
     if (!token) {
       navigate("/login", {
@@ -111,10 +123,9 @@ export default function Friends() {
         search
       );
 
-      const jugadoresAdaptados =
-        data.map(adaptarUsuario);
-
-      setPlayers(jugadoresAdaptados);
+      setPlayers(
+        data.map(adaptarUsuario)
+      );
     } catch (error) {
       console.error(
         "Error al cargar jugadores:",
@@ -122,8 +133,13 @@ export default function Friends() {
       );
 
       if (error.status === 401) {
-        localStorage.removeItem("token");
-        localStorage.removeItem("user");
+        localStorage.removeItem(
+          "token"
+        );
+
+        localStorage.removeItem(
+          "user"
+        );
 
         navigate("/login", {
           replace: true,
@@ -141,135 +157,211 @@ export default function Friends() {
   };
 
 
+  const cargarSolicitudes = async () => {
+    const token =
+      localStorage.getItem("token");
+
+    if (!token) {
+      return;
+    }
+
+    try {
+      const data =
+        await getSolicitudesAmistad(
+          token
+        );
+
+      const solicitudesAdaptadas =
+        data.map((solicitud) => ({
+          ...adaptarUsuario(
+            solicitud.remitente
+          ),
+
+          solicitudId:
+            solicitud.id,
+        }));
+
+      setRequests(
+        solicitudesAdaptadas
+      );
+    } catch (error) {
+      console.error(
+        "Error al cargar solicitudes:",
+        error
+      );
+    }
+  };
+
+
+  const cargarAmigos = async () => {
+    const token =
+      localStorage.getItem("token");
+
+    if (!token) {
+      return;
+    }
+
+    try {
+      const data =
+        await getAmigos(token);
+
+      setFriends(
+        data.map(adaptarUsuario)
+      );
+    } catch (error) {
+      console.error(
+        "Error al cargar amigos:",
+        error
+      );
+    }
+  };
+
+
   useEffect(() => {
     cargarJugadores();
+    cargarSolicitudes();
+    cargarAmigos();
   }, []);
 
 
-  const handleSearch = async (event) => {
+  const handleSearch = async (
+    event
+  ) => {
     event.preventDefault();
 
     await cargarJugadores(term);
   };
 
 
-  const handleAdd = (user) => {
-    // Por ahora solamente cambia el botón.
-    // En el próximo paso esto va a hacer
-    // POST al backend.
+  const handleAdd = async (user) => {
+    const token =
+      localStorage.getItem("token");
 
-    setSentRequests((previousRequests) => {
-      if (
-        previousRequests.includes(user.id)
-      ) {
-        return previousRequests;
-      }
-
-      return [
-        ...previousRequests,
-        user.id,
-      ];
-    });
-  };
-
-
-  const handleAccept = (user) => {
-    const requestIndex =
-      REQUESTS_MOCK.findIndex(
-        (request) =>
-          request.id === user.id
-      );
-
-    if (requestIndex !== -1) {
-      REQUESTS_MOCK.splice(
-        requestIndex,
-        1
-      );
+    if (!token) {
+      navigate("/login");
+      return;
     }
 
-    if (
-      !FRIENDS_MOCK.some(
-        (friend) =>
-          friend.id === user.id
-      )
-    ) {
-      FRIENDS_MOCK.push(user);
-    }
-
-    setRequests((previousRequests) =>
-      previousRequests.filter(
-        (request) =>
-          request.id !== user.id
-      )
-    );
-
-    setFriends((previousFriends) => {
-      const alreadyExists =
-        previousFriends.some(
-          (friend) =>
-            friend.id === user.id
+    try {
+      const response =
+        await enviarSolicitudAmistad(
+          token,
+          user.id
         );
 
-      if (alreadyExists) {
-        return previousFriends;
-      }
-
-      return [
-        ...previousFriends,
-        user,
-      ];
-    });
+      setPlayers(
+        (previousPlayers) =>
+          previousPlayers.map(
+            (player) =>
+              player.id === user.id
+                ? {
+                    ...player,
+                    friendshipStatus:
+                      response.estado,
+                  }
+                : player
+          )
+      );
+    } catch (error) {
+      console.error(
+        "Error al enviar solicitud:",
+        error
+      );
+    }
   };
 
 
-  const handleReject = (user) => {
-    const requestIndex =
-      REQUESTS_MOCK.findIndex(
-        (request) =>
-          request.id === user.id
-      );
+  const handleAccept = async (
+    user
+  ) => {
+    const token =
+      localStorage.getItem("token");
 
-    if (requestIndex !== -1) {
-      REQUESTS_MOCK.splice(
-        requestIndex,
-        1
-      );
+    if (!token) {
+      return;
     }
 
-    setRequests((previousRequests) =>
-      previousRequests.filter(
-        (request) =>
-          request.id !== user.id
-      )
-    );
+    try {
+      await aceptarSolicitudAmistad(
+        token,
+        user.solicitudId
+      );
+
+      await cargarSolicitudes();
+      await cargarAmigos();
+      await cargarJugadores(term);
+    } catch (error) {
+      console.error(
+        "Error al aceptar solicitud:",
+        error
+      );
+    }
   };
 
 
-  const handleRemoveFriend = (user) => {
-    const friendIndex =
-      FRIENDS_MOCK.findIndex(
-        (friend) =>
-          friend.id === user.id
-      );
+  const handleReject = async (
+    user
+  ) => {
+    const token =
+      localStorage.getItem("token");
 
-    if (friendIndex !== -1) {
-      FRIENDS_MOCK.splice(
-        friendIndex,
-        1
-      );
+    if (!token) {
+      return;
     }
 
-    setFriends((previousFriends) =>
-      previousFriends.filter(
-        (friend) =>
-          friend.id !== user.id
-      )
-    );
+    try {
+      await rechazarSolicitudAmistad(
+        token,
+        user.solicitudId
+      );
+
+      await cargarSolicitudes();
+      await cargarJugadores(term);
+    } catch (error) {
+      console.error(
+        "Error al rechazar solicitud:",
+        error
+      );
+    }
+  };
+
+
+  const handleRemoveFriend = async (
+    user
+  ) => {
+    const token =
+      localStorage.getItem("token");
+
+    if (!token) {
+      return;
+    }
+
+    try {
+      await eliminarAmigo(
+        token,
+        user.id
+      );
+
+      await cargarAmigos();
+      await cargarJugadores(term);
+    } catch (error) {
+      console.error(
+        "Error al eliminar amigo:",
+        error
+      );
+    }
   };
 
 
   const handleViewProfile = (user) => {
-    navigate(`/usuarios/${user.id}`);
+    navigate(
+      `/usuarios/${user.id}`,
+      {
+        state: {
+          fromTab: activeTab,
+        },
+      }
+    );
   };
 
 
@@ -295,6 +387,7 @@ export default function Friends() {
       </p>
 
       {action}
+
     </div>
   );
 
@@ -311,7 +404,6 @@ export default function Friends() {
           className="inline-flex items-center gap-2 text-sm text-gray-600 transition-colors hover:text-green-600 dark:text-gray-400 dark:hover:text-green-400"
         >
           <ArrowLeft size={16} />
-
           Volver al perfil
         </Link>
 
@@ -328,8 +420,6 @@ export default function Friends() {
 
         <section className="mt-6 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6 dark:border-white/10 dark:bg-white/[0.02]">
 
-          {/* Tabs */}
-
           <div className="-mx-1 flex gap-4 overflow-x-auto border-b border-gray-200 px-1 dark:border-white/10">
 
             {TABS.map((tab) => (
@@ -338,7 +428,9 @@ export default function Friends() {
                 key={tab.key}
                 type="button"
                 onClick={() =>
-                  setActiveTab(tab.key)
+                  setActiveTab(
+                    tab.key
+                  )
                 }
                 className={`flex shrink-0 items-center gap-2 border-b-2 px-1 pb-3 text-sm font-semibold transition-colors sm:text-base ${
                   activeTab === tab.key
@@ -349,30 +441,35 @@ export default function Friends() {
 
                 {tab.label}
 
-                {tab.key === "requests" &&
-                  requests.length > 0 && (
+                {tab.key ===
+                  "requests" &&
+                  requests.length >
+                    0 && (
 
                     <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-green-500 px-1.5 text-xs font-bold text-white">
-
-                      {requests.length}
-
+                      {
+                        requests.length
+                      }
                     </span>
+
                   )}
 
               </button>
+
             ))}
 
           </div>
 
 
-          {/* Buscar jugadores */}
-
-          {activeTab === "search" && (
+          {activeTab ===
+            "search" && (
 
             <div className="pt-5">
 
               <form
-                onSubmit={handleSearch}
+                onSubmit={
+                  handleSearch
+                }
                 className="flex flex-col gap-3 sm:flex-row"
               >
 
@@ -387,9 +484,12 @@ export default function Friends() {
                     type="search"
                     autoComplete="off"
                     value={term}
-                    onChange={(event) =>
+                    onChange={(
+                      event
+                    ) =>
                       setTerm(
-                        event.target.value
+                        event.target
+                          .value
                       )
                     }
                     placeholder="Buscar por nombre o nombre de usuario..."
@@ -429,12 +529,15 @@ export default function Friends() {
                   Cargando jugadores...
                 </p>
 
-              ) : players.length === 0 ? (
+              ) : players.length ===
+                0 ? (
 
                 <div className="mt-4">
 
                   <EmptyState
-                    icon={Search}
+                    icon={
+                      Search
+                    }
                     title="No encontramos jugadores"
                     text="Probá con otro nombre o nombre de usuario."
                   />
@@ -445,24 +548,30 @@ export default function Friends() {
 
                 <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
 
-                  {players.map((user) => (
+                  {players.map(
+                    (user) => (
 
-                    <UserCard
-                      key={user.id}
-                      user={user}
-                      variant="search"
-                      requestSent={
-                        sentRequests.includes(
+                      <UserCard
+                        key={
                           user.id
-                        )
-                      }
-                      onAdd={handleAdd}
-                      onViewProfile={
-                        handleViewProfile
-                      }
-                    />
+                        }
+                        user={
+                          user
+                        }
+                        variant="search"
+                        friendshipStatus={
+                          user.friendshipStatus
+                        }
+                        onAdd={
+                          handleAdd
+                        }
+                        onViewProfile={
+                          handleViewProfile
+                        }
+                      />
 
-                  ))}
+                    )
+                  )}
 
                 </div>
 
@@ -473,13 +582,13 @@ export default function Friends() {
           )}
 
 
-          {/* Solicitudes */}
-
-          {activeTab === "requests" && (
+          {activeTab ===
+            "requests" && (
 
             <div className="pt-5">
 
-              {requests.length === 0 ? (
+              {requests.length ===
+              0 ? (
 
                 <EmptyState
                   icon={Inbox}
@@ -491,17 +600,27 @@ export default function Friends() {
 
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
 
-                  {requests.map((user) => (
+                  {requests.map(
+                    (user) => (
 
-                    <UserCard
-                      key={user.id}
-                      user={user}
-                      variant="request"
-                      onAccept={handleAccept}
-                      onReject={handleReject}
-                    />
+                      <UserCard
+                        key={
+                          user.solicitudId
+                        }
+                        user={
+                          user
+                        }
+                        variant="request"
+                        onAccept={
+                          handleAccept
+                        }
+                        onReject={
+                          handleReject
+                        }
+                      />
 
-                  ))}
+                    )
+                  )}
 
                 </div>
 
@@ -512,20 +631,19 @@ export default function Friends() {
           )}
 
 
-          {/* Amigos */}
-
-          {activeTab === "friends" && (
+          {activeTab ===
+            "friends" && (
 
             <div className="pt-5">
 
-              {friends.length === 0 ? (
+              {friends.length ===
+              0 ? (
 
                 <EmptyState
                   icon={Users}
                   title="Todavía no agregaste amigos"
                   text="Buscá jugadores y empezá a armar tu grupo."
                   action={
-
                     <button
                       type="button"
                       onClick={() =>
@@ -537,7 +655,6 @@ export default function Friends() {
                     >
                       Buscar jugadores
                     </button>
-
                   }
                 />
 
@@ -545,21 +662,27 @@ export default function Friends() {
 
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
 
-                  {friends.map((user) => (
+                  {friends.map(
+                    (user) => (
 
-                    <UserCard
-                      key={user.id}
-                      user={user}
-                      variant="friend"
-                      onViewProfile={
-                        handleViewProfile
-                      }
-                      onRemove={
-                        handleRemoveFriend
-                      }
-                    />
+                      <UserCard
+                        key={
+                          user.id
+                        }
+                        user={
+                          user
+                        }
+                        variant="friend"
+                        onViewProfile={
+                          handleViewProfile
+                        }
+                        onRemove={
+                          handleRemoveFriend
+                        }
+                      />
 
-                  ))}
+                    )
+                  )}
 
                 </div>
 

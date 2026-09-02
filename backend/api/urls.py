@@ -8,6 +8,13 @@ from .views import (
     logout,
     usuarios,
     usuario_detalle,
+    calificar_usuario,
+    enviar_solicitud_amistad,
+    solicitudes_amistad_recibidas,
+    aceptar_solicitud_amistad,
+    rechazar_solicitud_amistad,
+    amigos,
+    eliminar_amigo,
 )
 
 
@@ -18,9 +25,48 @@ urlpatterns = [
     path("me/", me),
     path("logout/", logout),
 
-    path("usuarios/", usuarios),
+    path(
+        "usuarios/",
+        usuarios
+    ),
+
     path(
         "usuarios/<int:usuario_id>/",
-        usuario_detalle,
+        usuario_detalle
+    ),
+
+    path(
+        "usuarios/<int:usuario_id>/calificar/",
+        calificar_usuario
+    ),
+
+    path(
+        "amistades/solicitudes/",
+        solicitudes_amistad_recibidas
+    ),
+
+    path(
+        "amistades/solicitudes/enviar/",
+        enviar_solicitud_amistad
+    ),
+
+    path(
+        "amistades/solicitudes/<int:solicitud_id>/aceptar/",
+        aceptar_solicitud_amistad
+    ),
+
+    path(
+        "amistades/solicitudes/<int:solicitud_id>/rechazar/",
+        rechazar_solicitud_amistad
+    ),
+
+    path(
+        "amistades/",
+        amigos
+    ),
+
+    path(
+        "amistades/<int:usuario_id>/",
+        eliminar_amigo
     ),
 ]
