@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
+from django.core.validators import MinValueValidator, MaxValueValidator
 from django.utils import timezone
 
 
@@ -119,3 +120,92 @@ class SolicitudDueno(models.Model):
 
     def __str__(self):
         return f"{self.usuario.username} - {self.nombre_cancha} - {self.estado}"
+
+
+class CalificacionUsuario(models.Model):
+
+    evaluador = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="calificaciones_realizadas"
+    )
+
+    evaluado = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="calificaciones_recibidas"
+    )
+
+    valor = models.PositiveSmallIntegerField(
+        validators=[
+            MinValueValidator(1),
+            MaxValueValidator(5)
+        ]
+    )
+
+    fecha_actualizacion = models.DateTimeField(
+        auto_now=True
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["evaluador", "evaluado"],
+                name="calificacion_usuario_unica"
+            )
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.evaluador.username} -> "
+            f"{self.evaluado.username}: {self.valor}"
+        )
+
+
+class SolicitudAmistad(models.Model):
+
+    class Estado(models.TextChoices):
+        PENDIENTE = "pendiente", "Pendiente"
+        ACEPTADA = "aceptada", "Aceptada"
+        RECHAZADA = "rechazada", "Rechazada"
+
+    remitente = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="solicitudes_amistad_enviadas"
+    )
+
+    destinatario = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="solicitudes_amistad_recibidas"
+    )
+
+    estado = models.CharField(
+        max_length=20,
+        choices=Estado.choices,
+        default=Estado.PENDIENTE
+    )
+
+    fecha_solicitud = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    fecha_actualizacion = models.DateTimeField(
+        auto_now=True
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["remitente", "destinatario"],
+                name="solicitud_amistad_unica"
+            )
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.remitente.username} -> "
+            f"{self.destinatario.username} - "
+            f"{self.estado}"
+        )

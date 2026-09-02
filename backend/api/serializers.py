@@ -1,12 +1,17 @@
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 from django.db import transaction
+from django.db.models import Avg, Q
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils import timezone
 
 from rest_framework import serializers
 
-from .models import Perfil, SolicitudDueno
+from .models import (
+    Perfil,
+    SolicitudDueno,
+    SolicitudAmistad,
+)
 
 
 class RegisterSerializer(serializers.Serializer):
@@ -42,7 +47,6 @@ class RegisterSerializer(serializers.Serializer):
         required=False,
         allow_blank=True
     )
-
 
     def validate(self, data):
 
@@ -96,7 +100,6 @@ class RegisterSerializer(serializers.Serializer):
 
         return data
 
-
     @transaction.atomic
     def create(self, validated_data):
 
@@ -131,7 +134,6 @@ class RegisterSerializer(serializers.Serializer):
         )
 
         if tipo_usuario == Perfil.Rol.DUENO_CANCHA:
-
             SolicitudDueno.objects.create(
                 usuario=user,
                 nombre_cancha=nombre_cancha,
@@ -144,6 +146,7 @@ class RegisterSerializer(serializers.Serializer):
 
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
+
     password = serializers.CharField(
         write_only=True
     )
@@ -160,7 +163,6 @@ class PerfilUpdateSerializer(serializers.ModelSerializer):
 
         return value
 
-
     def validate_fecha_nacimiento(self, value):
 
         if value and value > timezone.localdate():
@@ -170,9 +172,9 @@ class PerfilUpdateSerializer(serializers.ModelSerializer):
 
         return value
 
-
     class Meta:
         model = Perfil
+
         fields = (
             "fecha_nacimiento",
             "telefono",
@@ -180,4 +182,157 @@ class PerfilUpdateSerializer(serializers.ModelSerializer):
             "pierna_habil",
             "bio",
             "foto",
+        )
+
+
+class UsuarioPublicoSerializer(serializers.ModelSerializer):
+
+    edad = serializers.IntegerField(
+        source="perfil.edad",
+        read_only=True
+    )
+
+    posicion = serializers.CharField(
+        source="perfil.posicion",
+        read_only=True
+    )
+
+    pierna_habil = serializers.CharField(
+        source="perfil.pierna_habil",
+        read_only=True
+    )
+
+    bio = serializers.CharField(
+        source="perfil.bio",
+        read_only=True
+    )
+
+    foto = serializers.SerializerMethodField()
+    reputacion = serializers.SerializerMethodField()
+    cantidad_calificaciones = serializers.SerializerMethodField()
+    mi_calificacion = serializers.SerializerMethodField()
+    estado_amistad = serializers.SerializerMethodField()
+
+    def get_foto(self, user):
+        request = self.context.get("request")
+
+        if not user.perfil.foto:
+            return None
+
+        if request:
+            return request.build_absolute_uri(
+                user.perfil.foto.url
+            )
+
+        return user.perfil.foto.url
+
+    def get_reputacion(self, user):
+
+        promedio = user.calificaciones_recibidas.aggregate(
+            promedio=Avg("valor")
+        )["promedio"]
+
+        return (
+            round(float(promedio), 1)
+            if promedio is not None
+            else 0
+        )
+
+    def get_cantidad_calificaciones(self, user):
+        return user.calificaciones_recibidas.count()
+
+    def get_mi_calificacion(self, user):
+        request = self.context.get("request")
+
+        if not request or not request.user.is_authenticated:
+            return 0
+
+        calificacion = user.calificaciones_recibidas.filter(
+            evaluador=request.user
+        ).first()
+
+        return calificacion.valor if calificacion else 0
+
+    def get_estado_amistad(self, user):
+        request = self.context.get("request")
+
+        if not request or not request.user.is_authenticated:
+            return "ninguna"
+
+        if request.user.id == user.id:
+            return "ninguna"
+
+        solicitud = SolicitudAmistad.objects.filter(
+            Q(
+                remitente=request.user,
+                destinatario=user
+            )
+            |
+            Q(
+                remitente=user,
+                destinatario=request.user
+            )
+        ).order_by(
+            "-fecha_actualizacion"
+        ).first()
+
+        if solicitud is None:
+            return "ninguna"
+
+        if solicitud.estado == SolicitudAmistad.Estado.ACEPTADA:
+            return "amigos"
+
+        if solicitud.estado == SolicitudAmistad.Estado.RECHAZADA:
+            return "ninguna"
+
+        if solicitud.remitente_id == request.user.id:
+            return "enviada"
+
+        return "recibida"
+
+    class Meta:
+        model = User
+
+        fields = (
+            "id",
+            "username",
+            "edad",
+            "posicion",
+            "pierna_habil",
+            "bio",
+            "foto",
+            "reputacion",
+            "cantidad_calificaciones",
+            "mi_calificacion",
+            "estado_amistad",
+        )
+
+
+class CalificacionUsuarioSerializer(serializers.Serializer):
+    valor = serializers.IntegerField(
+        min_value=1,
+        max_value=5
+    )
+
+
+class EnviarSolicitudAmistadSerializer(serializers.Serializer):
+    destinatario_id = serializers.IntegerField(
+        min_value=1
+    )
+
+
+class SolicitudAmistadRecibidaSerializer(serializers.ModelSerializer):
+
+    remitente = UsuarioPublicoSerializer(
+        read_only=True
+    )
+
+    class Meta:
+        model = SolicitudAmistad
+
+        fields = (
+            "id",
+            "remitente",
+            "estado",
+            "fecha_solicitud",
         )

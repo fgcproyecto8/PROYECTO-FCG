@@ -1,5 +1,6 @@
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
+from django.db.models import Q, Avg
 
 from rest_framework.authtoken.models import Token
 from rest_framework.authentication import TokenAuthentication
@@ -12,11 +13,21 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 
-from .models import Perfil, SolicitudDueno
+from .models import (
+    Perfil,
+    SolicitudDueno,
+    CalificacionUsuario,
+    SolicitudAmistad,
+)
+
 from .serializers import (
     RegisterSerializer,
     LoginSerializer,
     PerfilUpdateSerializer,
+    UsuarioPublicoSerializer,
+    CalificacionUsuarioSerializer,
+    EnviarSolicitudAmistadSerializer,
+    SolicitudAmistadRecibidaSerializer,
 )
 
 
@@ -116,7 +127,6 @@ def login(request):
     )
 
     if user.is_superuser:
-
         return Response({
             "mensaje": "Inicio de sesión correcto.",
             "token": token.key,
@@ -165,10 +175,7 @@ def me(request):
         if user.is_superuser:
             return Response(
                 {
-                    "mensaje": (
-                        "El administrador no tiene "
-                        "un perfil editable."
-                    )
+                    "mensaje": "El administrador no tiene un perfil editable."
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
@@ -182,6 +189,7 @@ def me(request):
         )
 
         if serializer.is_valid():
+
             perfil_actualizado = serializer.save()
 
             datos_perfil = dict(serializer.data)
@@ -216,25 +224,44 @@ def me(request):
 
     perfil = user.perfil
 
+    promedio = user.calificaciones_recibidas.aggregate(
+        promedio=Avg("valor")
+    )["promedio"]
+
     respuesta = {
         "id": user.id,
         "username": user.username,
         "email": user.email,
         "rol": perfil.rol,
+
         "fecha_nacimiento": (
             perfil.fecha_nacimiento.isoformat()
             if perfil.fecha_nacimiento
             else None
         ),
+
         "edad": perfil.edad,
         "telefono": perfil.telefono,
         "posicion": perfil.posicion,
         "pierna_habil": perfil.pierna_habil,
         "bio": perfil.bio,
+
         "foto": (
-            request.build_absolute_uri(perfil.foto.url)
+            request.build_absolute_uri(
+                perfil.foto.url
+            )
             if perfil.foto
             else None
+        ),
+
+        "reputacion": (
+            round(float(promedio), 1)
+            if promedio is not None
+            else 0
+        ),
+
+        "cantidad_calificaciones": (
+            user.calificaciones_recibidas.count()
         ),
     }
 
@@ -265,4 +292,394 @@ def logout(request):
 
     return Response({
         "mensaje": "Sesión cerrada correctamente."
+    })
+
+
+@api_view(["GET"])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def usuarios(request):
+
+    search = request.GET.get(
+        "search",
+        ""
+    ).strip()
+
+    jugadores = User.objects.filter(
+        perfil__rol=Perfil.Rol.JUGADOR
+    ).exclude(
+        id=request.user.id
+    )
+
+    if search:
+        jugadores = jugadores.filter(
+            Q(username__icontains=search)
+            | Q(perfil__posicion__icontains=search)
+        )
+
+    jugadores = jugadores.order_by(
+        "username"
+    )
+
+    serializer = UsuarioPublicoSerializer(
+        jugadores,
+        many=True,
+        context={
+            "request": request
+        }
+    )
+
+    return Response(serializer.data)
+
+
+@api_view(["GET"])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def usuario_detalle(request, usuario_id):
+
+    usuario = User.objects.filter(
+        id=usuario_id,
+        perfil__rol=Perfil.Rol.JUGADOR
+    ).first()
+
+    if usuario is None:
+        return Response(
+            {
+                "mensaje": "Jugador no encontrado."
+            },
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    serializer = UsuarioPublicoSerializer(
+        usuario,
+        context={
+            "request": request
+        }
+    )
+
+    return Response(serializer.data)
+
+
+@api_view(["POST"])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def calificar_usuario(request, usuario_id):
+
+    if request.user.id == usuario_id:
+        return Response(
+            {
+                "mensaje": "No podés calificarte a vos mismo."
+            },
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    evaluado = User.objects.filter(
+        id=usuario_id,
+        perfil__rol=Perfil.Rol.JUGADOR
+    ).first()
+
+    if evaluado is None:
+        return Response(
+            {
+                "mensaje": "Jugador no encontrado."
+            },
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    serializer = CalificacionUsuarioSerializer(
+        data=request.data
+    )
+
+    if not serializer.is_valid():
+        return Response(
+            serializer.errors,
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    calificacion, created = (
+        CalificacionUsuario.objects.update_or_create(
+            evaluador=request.user,
+            evaluado=evaluado,
+            defaults={
+                "valor": serializer.validated_data["valor"]
+            }
+        )
+    )
+
+    promedio = evaluado.calificaciones_recibidas.aggregate(
+        promedio=Avg("valor")
+    )["promedio"]
+
+    return Response({
+        "mensaje": "Calificación guardada correctamente.",
+
+        "reputacion": (
+            round(float(promedio), 1)
+            if promedio is not None
+            else 0
+        ),
+
+        "cantidad_calificaciones": (
+            evaluado.calificaciones_recibidas.count()
+        ),
+
+        "mi_calificacion": calificacion.valor,
+    })
+
+
+@api_view(["POST"])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def enviar_solicitud_amistad(request):
+
+    serializer = EnviarSolicitudAmistadSerializer(
+        data=request.data
+    )
+
+    if not serializer.is_valid():
+        return Response(
+            serializer.errors,
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    destinatario_id = serializer.validated_data[
+        "destinatario_id"
+    ]
+
+    if request.user.id == destinatario_id:
+        return Response(
+            {
+                "mensaje": "No podés agregarte a vos mismo."
+            },
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    destinatario = User.objects.filter(
+        id=destinatario_id,
+        perfil__rol=Perfil.Rol.JUGADOR
+    ).first()
+
+    if destinatario is None:
+        return Response(
+            {
+                "mensaje": "Jugador no encontrado."
+            },
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    existente = SolicitudAmistad.objects.filter(
+        Q(
+            remitente=request.user,
+            destinatario=destinatario
+        )
+        |
+        Q(
+            remitente=destinatario,
+            destinatario=request.user
+        )
+    ).order_by(
+        "-fecha_actualizacion"
+    ).first()
+
+    if existente:
+
+        if existente.estado == SolicitudAmistad.Estado.ACEPTADA:
+            return Response({
+                "mensaje": "Ya son amigos.",
+                "estado": "amigos",
+            })
+
+        if existente.estado == SolicitudAmistad.Estado.PENDIENTE:
+
+            if existente.remitente_id == request.user.id:
+                return Response({
+                    "mensaje": "La solicitud ya fue enviada.",
+                    "estado": "enviada",
+                })
+
+            return Response({
+                "mensaje": "Este usuario ya te envió una solicitud.",
+                "estado": "recibida",
+            })
+
+        existente.delete()
+
+    solicitud = SolicitudAmistad.objects.create(
+        remitente=request.user,
+        destinatario=destinatario
+    )
+
+    return Response(
+        {
+            "mensaje": "Solicitud enviada correctamente.",
+            "estado": "enviada",
+            "solicitud_id": solicitud.id,
+        },
+        status=status.HTTP_201_CREATED
+    )
+
+
+@api_view(["GET"])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def solicitudes_amistad_recibidas(request):
+
+    solicitudes = SolicitudAmistad.objects.filter(
+        destinatario=request.user,
+        estado=SolicitudAmistad.Estado.PENDIENTE
+    ).select_related(
+        "remitente",
+        "remitente__perfil"
+    ).order_by(
+        "-fecha_solicitud"
+    )
+
+    serializer = SolicitudAmistadRecibidaSerializer(
+        solicitudes,
+        many=True,
+        context={
+            "request": request
+        }
+    )
+
+    return Response(serializer.data)
+
+
+@api_view(["POST"])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def aceptar_solicitud_amistad(request, solicitud_id):
+
+    solicitud = SolicitudAmistad.objects.filter(
+        id=solicitud_id,
+        destinatario=request.user,
+        estado=SolicitudAmistad.Estado.PENDIENTE
+    ).first()
+
+    if solicitud is None:
+        return Response(
+            {
+                "mensaje": "Solicitud no encontrada."
+            },
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    solicitud.estado = SolicitudAmistad.Estado.ACEPTADA
+
+    solicitud.save(
+        update_fields=[
+            "estado",
+            "fecha_actualizacion"
+        ]
+    )
+
+    return Response({
+        "mensaje": "Solicitud aceptada correctamente."
+    })
+
+
+@api_view(["POST"])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def rechazar_solicitud_amistad(request, solicitud_id):
+
+    solicitud = SolicitudAmistad.objects.filter(
+        id=solicitud_id,
+        destinatario=request.user,
+        estado=SolicitudAmistad.Estado.PENDIENTE
+    ).first()
+
+    if solicitud is None:
+        return Response(
+            {
+                "mensaje": "Solicitud no encontrada."
+            },
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    solicitud.estado = SolicitudAmistad.Estado.RECHAZADA
+
+    solicitud.save(
+        update_fields=[
+            "estado",
+            "fecha_actualizacion"
+        ]
+    )
+
+    return Response({
+        "mensaje": "Solicitud rechazada."
+    })
+
+
+@api_view(["GET"])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def amigos(request):
+
+    relaciones = SolicitudAmistad.objects.filter(
+        Q(remitente=request.user)
+        |
+        Q(destinatario=request.user),
+        estado=SolicitudAmistad.Estado.ACEPTADA
+    ).select_related(
+        "remitente",
+        "remitente__perfil",
+        "destinatario",
+        "destinatario__perfil"
+    )
+
+    usuarios_amigos = []
+
+    for relacion in relaciones:
+
+        if relacion.remitente_id == request.user.id:
+            usuarios_amigos.append(
+                relacion.destinatario
+            )
+        else:
+            usuarios_amigos.append(
+                relacion.remitente
+            )
+
+    serializer = UsuarioPublicoSerializer(
+        usuarios_amigos,
+        many=True,
+        context={
+            "request": request
+        }
+    )
+
+    return Response(serializer.data)
+
+
+@api_view(["DELETE"])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def eliminar_amigo(request, usuario_id):
+
+    relacion = SolicitudAmistad.objects.filter(
+        Q(
+            remitente=request.user,
+            destinatario_id=usuario_id
+        )
+        |
+        Q(
+            remitente_id=usuario_id,
+            destinatario=request.user
+        ),
+        estado=SolicitudAmistad.Estado.ACEPTADA
+    ).first()
+
+    if relacion is None:
+        return Response(
+            {
+                "mensaje": "La amistad no existe."
+            },
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    relacion.delete()
+
+    return Response({
+        "mensaje": "Amigo eliminado correctamente."
     })
