@@ -228,6 +228,12 @@ class UsuarioPublicoSerializer(serializers.ModelSerializer):
 
     def get_reputacion(self, user):
 
+        reputaciones = self.context.get("reputaciones")
+
+        if reputaciones is not None:
+            datos = reputaciones.get(user.id)
+            return datos["promedio"] if datos else 0
+
         promedio = user.calificaciones_recibidas.aggregate(
             promedio=Avg("valor")
         )["promedio"]
@@ -239,6 +245,13 @@ class UsuarioPublicoSerializer(serializers.ModelSerializer):
         )
 
     def get_cantidad_calificaciones(self, user):
+
+        reputaciones = self.context.get("reputaciones")
+
+        if reputaciones is not None:
+            datos = reputaciones.get(user.id)
+            return datos["cantidad"] if datos else 0
+
         return user.calificaciones_recibidas.count()
 
     def get_mi_calificacion(self, user):
@@ -246,6 +259,11 @@ class UsuarioPublicoSerializer(serializers.ModelSerializer):
 
         if not request or not request.user.is_authenticated:
             return 0
+
+        mis_calificaciones = self.context.get("mis_calificaciones")
+
+        if mis_calificaciones is not None:
+            return mis_calificaciones.get(user.id, 0)
 
         calificacion = user.calificaciones_recibidas.filter(
             evaluador=request.user
@@ -261,6 +279,11 @@ class UsuarioPublicoSerializer(serializers.ModelSerializer):
 
         if request.user.id == user.id:
             return "ninguna"
+
+        estados_amistad = self.context.get("estados_amistad")
+
+        if estados_amistad is not None:
+            return estados_amistad.get(user.id, "ninguna")
 
         solicitud = SolicitudAmistad.objects.filter(
             Q(

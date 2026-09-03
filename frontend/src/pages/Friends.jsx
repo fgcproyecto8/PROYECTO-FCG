@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Link,
   useLocation,
@@ -34,6 +34,51 @@ const TABS = [
 ];
 
 
+const adaptarUsuario = (usuario) => ({
+  id: usuario.id,
+
+  fullName: usuario.username,
+
+  username: usuario.username,
+
+  position:
+    usuario.posicion ||
+    "Sin posición",
+
+  photo:
+    usuario.foto ||
+    null,
+
+  age:
+    usuario.edad !== null &&
+    usuario.edad !== undefined
+      ? usuario.edad
+      : null,
+
+  leg:
+    usuario.pierna_habil ||
+    "",
+
+  bio:
+    usuario.bio ||
+    "Sin biografía.",
+
+  matchesPlayed: 0,
+
+  rating: Number(
+    usuario.reputacion || 0
+  ),
+
+  reviews: Number(
+    usuario.cantidad_calificaciones || 0
+  ),
+
+  friendshipStatus:
+    usuario.estado_amistad ||
+    "ninguna",
+});
+
+
 export default function Friends() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -55,92 +100,12 @@ export default function Friends() {
     useState("");
 
 
-  const adaptarUsuario = (usuario) => ({
-    id: usuario.id,
+  const cargarJugadores = useCallback(
+    async (search = "") => {
+      const token =
+        localStorage.getItem("token");
 
-    fullName: usuario.username,
-
-    username: usuario.username,
-
-    position:
-      usuario.posicion ||
-      "Sin posición",
-
-    photo:
-      usuario.foto ||
-      null,
-
-    age:
-      usuario.edad !== null &&
-      usuario.edad !== undefined
-        ? usuario.edad
-        : null,
-
-    leg:
-      usuario.pierna_habil ||
-      "",
-
-    bio:
-      usuario.bio ||
-      "Sin biografía.",
-
-    matchesPlayed: 0,
-
-    rating: Number(
-      usuario.reputacion || 0
-    ),
-
-    reviews: Number(
-      usuario.cantidad_calificaciones || 0
-    ),
-
-    friendshipStatus:
-      usuario.estado_amistad ||
-      "ninguna",
-  });
-
-
-  const cargarJugadores = async (
-    search = ""
-  ) => {
-    const token =
-      localStorage.getItem("token");
-
-    if (!token) {
-      navigate("/login", {
-        replace: true,
-      });
-
-      return;
-    }
-
-    try {
-      setLoadingPlayers(true);
-      setPlayersError("");
-
-      const data = await getUsuarios(
-        token,
-        search
-      );
-
-      setPlayers(
-        data.map(adaptarUsuario)
-      );
-    } catch (error) {
-      console.error(
-        "Error al cargar jugadores:",
-        error
-      );
-
-      if (error.status === 401) {
-        localStorage.removeItem(
-          "token"
-        );
-
-        localStorage.removeItem(
-          "user"
-        );
-
+      if (!token) {
         navigate("/login", {
           replace: true,
         });
@@ -148,16 +113,52 @@ export default function Friends() {
         return;
       }
 
-      setPlayersError(
-        "No se pudieron cargar los jugadores."
-      );
-    } finally {
-      setLoadingPlayers(false);
-    }
-  };
+      try {
+        setLoadingPlayers(true);
+        setPlayersError("");
+
+        const data = await getUsuarios(
+          token,
+          search
+        );
+
+        setPlayers(
+          data.map(adaptarUsuario)
+        );
+      } catch (error) {
+        console.error(
+          "Error al cargar jugadores:",
+          error
+        );
+
+        if (error.status === 401) {
+          localStorage.removeItem(
+            "token"
+          );
+
+          localStorage.removeItem(
+            "user"
+          );
+
+          navigate("/login", {
+            replace: true,
+          });
+
+          return;
+        }
+
+        setPlayersError(
+          "No se pudieron cargar los jugadores."
+        );
+      } finally {
+        setLoadingPlayers(false);
+      }
+    },
+    [navigate]
+  );
 
 
-  const cargarSolicitudes = async () => {
+  const cargarSolicitudes = useCallback(async () => {
     const token =
       localStorage.getItem("token");
 
@@ -190,10 +191,10 @@ export default function Friends() {
         error
       );
     }
-  };
+  }, []);
 
 
-  const cargarAmigos = async () => {
+  const cargarAmigos = useCallback(async () => {
     const token =
       localStorage.getItem("token");
 
@@ -214,14 +215,14 @@ export default function Friends() {
         error
       );
     }
-  };
+  }, []);
 
 
   useEffect(() => {
     cargarJugadores();
     cargarSolicitudes();
     cargarAmigos();
-  }, []);
+  }, [cargarJugadores, cargarSolicitudes, cargarAmigos]);
 
 
   const handleSearch = async (

@@ -1,13 +1,9 @@
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState } from "react";
 import { ImagePlus } from "lucide-react";
 
 export default function ImageUploader({ value, onChange }) {
   const inputRef = useRef(null);
   const [preview, setPreview] = useState(value || "");
-
-  useEffect(() => {
-    setPreview(value || "");
-  }, [value]);
 
   const handleFile = (e) => {
     const file = e.target.files?.[0];

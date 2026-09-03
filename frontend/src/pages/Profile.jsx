@@ -36,6 +36,9 @@ import {
   enviarSolicitudAmistad,
 } from "../services/api.js";
 
+import { DEFAULT_AVATAR } from "../utils/avatar.js";
+import { primerError } from "../utils/apiErrors.js";
+
 const POSITIONS = [
   "Delantero",
   "Mediocampista",
@@ -44,16 +47,6 @@ const POSITIONS = [
 ];
 
 const LEGS = ["Derecha", "Izquierda"];
-
-const DEFAULT_AVATAR =
-  "data:image/svg+xml;charset=UTF-8," +
-  encodeURIComponent(`
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
-      <rect width="128" height="128" fill="#e2e8f0"/>
-      <circle cx="64" cy="45" r="24" fill="#64748b"/>
-      <path d="M24 116c4-26 21-40 40-40s36 14 40 40" fill="#64748b"/>
-    </svg>
-  `);
 
 const hoy = new Date();
 
@@ -415,29 +408,15 @@ export default function Profile() {
 
       if (error.data?.telefono) {
         setProfileError(
-          Array.isArray(
-            error.data.telefono
-          )
-            ? error.data.telefono[0]
-            : error.data.telefono
+          primerError(error.data.telefono)
         );
 
         return;
       }
 
-      if (
-        error.data
-          ?.fecha_nacimiento
-      ) {
+      if (error.data?.fecha_nacimiento) {
         setProfileError(
-          Array.isArray(
-            error.data
-              .fecha_nacimiento
-          )
-            ? error.data
-                .fecha_nacimiento[0]
-            : error.data
-                .fecha_nacimiento
+          primerError(error.data.fecha_nacimiento)
         );
 
         return;
