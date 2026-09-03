@@ -7,6 +7,8 @@ import Button from "../components/Button.jsx";
 import ThemeToggle from "../components/ThemeToggle.jsx";
 
 import { loginUser } from "../services/api.js";
+import { mapBackendRole, mapEstadoDueno } from "../utils/roles.js";
+import { mapearErroresDeCampos } from "../utils/apiErrors.js";
 
 
 export default function Login() {
@@ -73,30 +75,10 @@ export default function Login() {
       });
 
       const backendRole = data.usuario.rol;
-
-      let frontendRole = "player";
-
-      if (backendRole === "dueno_cancha") {
-        frontendRole = "owner";
-      }
-
-      if (backendRole === "administrador") {
-        frontendRole = "admin";
-      }
+      const frontendRole = mapBackendRole(backendRole);
 
       const backendStatus = data.solicitud_dueno?.estado;
-
-      let frontendStatus = "approved";
-
-      if (backendRole === "dueno_cancha") {
-        if (backendStatus === "pendiente") {
-          frontendStatus = "pending";
-        } else if (backendStatus === "aprobada") {
-          frontendStatus = "approved";
-        } else if (backendStatus === "rechazada") {
-          frontendStatus = "rejected";
-        }
-      }
+      const frontendStatus = mapEstadoDueno(backendRole, backendStatus);
 
       const user = {
         ...data.usuario,
@@ -121,23 +103,10 @@ export default function Login() {
     } catch (error) {
       const backendErrors = error.data || {};
 
-      const nuevosErrores = {};
-
-      if (backendErrors.email) {
-        nuevosErrores.email = Array.isArray(
-          backendErrors.email
-        )
-          ? backendErrors.email[0]
-          : backendErrors.email;
-      }
-
-      if (backendErrors.password) {
-        nuevosErrores.password = Array.isArray(
-          backendErrors.password
-        )
-          ? backendErrors.password[0]
-          : backendErrors.password;
-      }
+      const nuevosErrores = mapearErroresDeCampos(backendErrors, {
+        email: "email",
+        password: "password",
+      });
 
       setErrors(nuevosErrores);
 

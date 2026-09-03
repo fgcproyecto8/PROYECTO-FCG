@@ -1,15 +1,10 @@
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
-from django.db.models import Q, Avg
+from django.db.models import Q, Avg, Count
 
 from rest_framework.authtoken.models import Token
-from rest_framework.authentication import TokenAuthentication
-from rest_framework.decorators import (
-    api_view,
-    authentication_classes,
-    permission_classes,
-)
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework import status
 
@@ -32,6 +27,7 @@ from .serializers import (
 
 
 @api_view(["GET"])
+@permission_classes([AllowAny])
 def hola(request):
     return Response({
         "mensaje": "Hola React!"
@@ -39,6 +35,7 @@ def hola(request):
 
 
 @api_view(["POST"])
+@permission_classes([AllowAny])
 def register(request):
 
     serializer = RegisterSerializer(
@@ -53,8 +50,13 @@ def register(request):
 
     user = serializer.save()
 
+    token, created = Token.objects.get_or_create(
+        user=user
+    )
+
     respuesta = {
         "mensaje": "Usuario registrado correctamente.",
+        "token": token.key,
         "usuario": {
             "id": user.id,
             "username": user.username,
@@ -81,6 +83,7 @@ def register(request):
 
 
 @api_view(["POST"])
+@permission_classes([AllowAny])
 def login(request):
 
     serializer = LoginSerializer(
@@ -164,8 +167,6 @@ def login(request):
 
 
 @api_view(["GET", "PATCH"])
-@authentication_classes([TokenAuthentication])
-@permission_classes([IsAuthenticated])
 def me(request):
 
     user = request.user
@@ -284,8 +285,6 @@ def me(request):
 
 
 @api_view(["POST"])
-@authentication_classes([TokenAuthentication])
-@permission_classes([IsAuthenticated])
 def logout(request):
 
     request.auth.delete()
@@ -295,9 +294,73 @@ def logout(request):
     })
 
 
+def _contexto_usuarios_publicos(request, usuarios):
+    """Precalcula reputación, mi_calificacion y estado_amistad en lote
+    para una lista de usuarios, evitando N+1 queries en
+    UsuarioPublicoSerializer cuando se serializan varios a la vez."""
+
+    ids = [usuario.id for usuario in usuarios]
+
+    reputaciones = {
+        fila["evaluado"]: {
+            "promedio": (
+                round(float(fila["promedio"]), 1)
+                if fila["promedio"] is not None
+                else 0
+            ),
+            "cantidad": fila["cantidad"],
+        }
+        for fila in CalificacionUsuario.objects.filter(
+            evaluado_id__in=ids
+        ).values("evaluado").annotate(
+            promedio=Avg("valor"),
+            cantidad=Count("id"),
+        )
+    }
+
+    mis_calificaciones = {}
+    estados_amistad = {}
+
+    if request.user.is_authenticated:
+
+        mis_calificaciones = dict(
+            CalificacionUsuario.objects.filter(
+                evaluador=request.user,
+                evaluado_id__in=ids,
+            ).values_list("evaluado_id", "valor")
+        )
+
+        relaciones = SolicitudAmistad.objects.filter(
+            Q(remitente=request.user, destinatario_id__in=ids)
+            | Q(remitente_id__in=ids, destinatario=request.user)
+        ).order_by("fecha_actualizacion")
+
+        for relacion in relaciones:
+
+            otro_id = (
+                relacion.destinatario_id
+                if relacion.remitente_id == request.user.id
+                else relacion.remitente_id
+            )
+
+            if relacion.estado == SolicitudAmistad.Estado.ACEPTADA:
+                estados_amistad[otro_id] = "amigos"
+            elif relacion.estado == SolicitudAmistad.Estado.RECHAZADA:
+                estados_amistad[otro_id] = "ninguna"
+            elif relacion.remitente_id == request.user.id:
+                estados_amistad[otro_id] = "enviada"
+            else:
+                estados_amistad[otro_id] = "recibida"
+
+    return {
+        "request": request,
+        "reputaciones": reputaciones,
+        "mis_calificaciones": mis_calificaciones,
+        "estados_amistad": estados_amistad,
+    }
+
+
 @api_view(["GET"])
-@authentication_classes([TokenAuthentication])
-@permission_classes([IsAuthenticated])
 def usuarios(request):
 
     search = request.GET.get(
@@ -309,7 +372,7 @@ def usuarios(request):
         perfil__rol=Perfil.Rol.JUGADOR
     ).exclude(
         id=request.user.id
-    )
+    ).select_related("perfil")
 
     if search:
         jugadores = jugadores.filter(
@@ -324,17 +387,13 @@ def usuarios(request):
     serializer = UsuarioPublicoSerializer(
         jugadores,
         many=True,
-        context={
-            "request": request
-        }
+        context=_contexto_usuarios_publicos(request, jugadores)
     )
 
     return Response(serializer.data)
 
 
 @api_view(["GET"])
-@authentication_classes([TokenAuthentication])
-@permission_classes([IsAuthenticated])
 def usuario_detalle(request, usuario_id):
 
     usuario = User.objects.filter(
@@ -361,8 +420,6 @@ def usuario_detalle(request, usuario_id):
 
 
 @api_view(["POST"])
-@authentication_classes([TokenAuthentication])
-@permission_classes([IsAuthenticated])
 def calificar_usuario(request, usuario_id):
 
     if request.user.id == usuario_id:
@@ -428,8 +485,6 @@ def calificar_usuario(request, usuario_id):
 
 
 @api_view(["POST"])
-@authentication_classes([TokenAuthentication])
-@permission_classes([IsAuthenticated])
 def enviar_solicitud_amistad(request):
 
     serializer = EnviarSolicitudAmistadSerializer(
@@ -520,8 +575,6 @@ def enviar_solicitud_amistad(request):
 
 
 @api_view(["GET"])
-@authentication_classes([TokenAuthentication])
-@permission_classes([IsAuthenticated])
 def solicitudes_amistad_recibidas(request):
 
     solicitudes = SolicitudAmistad.objects.filter(
@@ -534,20 +587,18 @@ def solicitudes_amistad_recibidas(request):
         "-fecha_solicitud"
     )
 
+    remitentes = [solicitud.remitente for solicitud in solicitudes]
+
     serializer = SolicitudAmistadRecibidaSerializer(
         solicitudes,
         many=True,
-        context={
-            "request": request
-        }
+        context=_contexto_usuarios_publicos(request, remitentes)
     )
 
     return Response(serializer.data)
 
 
 @api_view(["POST"])
-@authentication_classes([TokenAuthentication])
-@permission_classes([IsAuthenticated])
 def aceptar_solicitud_amistad(request, solicitud_id):
 
     solicitud = SolicitudAmistad.objects.filter(
@@ -579,8 +630,6 @@ def aceptar_solicitud_amistad(request, solicitud_id):
 
 
 @api_view(["POST"])
-@authentication_classes([TokenAuthentication])
-@permission_classes([IsAuthenticated])
 def rechazar_solicitud_amistad(request, solicitud_id):
 
     solicitud = SolicitudAmistad.objects.filter(
@@ -612,8 +661,6 @@ def rechazar_solicitud_amistad(request, solicitud_id):
 
 
 @api_view(["GET"])
-@authentication_classes([TokenAuthentication])
-@permission_classes([IsAuthenticated])
 def amigos(request):
 
     relaciones = SolicitudAmistad.objects.filter(
@@ -644,17 +691,13 @@ def amigos(request):
     serializer = UsuarioPublicoSerializer(
         usuarios_amigos,
         many=True,
-        context={
-            "request": request
-        }
+        context=_contexto_usuarios_publicos(request, usuarios_amigos)
     )
 
     return Response(serializer.data)
 
 
 @api_view(["DELETE"])
-@authentication_classes([TokenAuthentication])
-@permission_classes([IsAuthenticated])
 def eliminar_amigo(request, usuario_id):
 
     relacion = SolicitudAmistad.objects.filter(

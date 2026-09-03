@@ -16,10 +16,10 @@ export default function InviteFriendModal({
 }) {
   const [query, setQuery] = useState("");
 
-  const playersList = match?.playersList || [];
-
   const amigosDisponibles = useMemo(() => {
     if (!match) return [];
+
+    const playersList = match.playersList || [];
 
     const idsJugadores = new Set(
       playersList.map((player) => String(player.id))
@@ -53,7 +53,7 @@ export default function InviteFriendModal({
         friend.username.toLowerCase().includes(term)
       );
     });
-  }, [friends, match, playersList, query]);
+  }, [friends, match, query]);
 
   if (!match) {
     return null;

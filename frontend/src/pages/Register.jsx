@@ -7,6 +7,8 @@ import Button from "../components/Button.jsx";
 import ThemeToggle from "../components/ThemeToggle.jsx";
 
 import { registerUser } from "../services/api.js";
+import { mapBackendRole, mapEstadoDueno } from "../utils/roles.js";
+import { mapearErroresDeCampos } from "../utils/apiErrors.js";
 
 
 export default function Register() {
@@ -116,31 +118,10 @@ export default function Register() {
       const data = await registerUser(datos);
 
       const backendRole = data.usuario.rol;
+      const frontendRole = mapBackendRole(backendRole);
 
-      let frontendRole = "player";
-
-      if (backendRole === "dueno_cancha") {
-        frontendRole = "owner";
-      }
-
-      if (backendRole === "administrador") {
-        frontendRole = "admin";
-      }
-
-      const backendStatus =
-        data.solicitud_dueno?.estado;
-
-      let frontendStatus = "approved";
-
-      if (backendRole === "dueno_cancha") {
-        if (backendStatus === "pendiente") {
-          frontendStatus = "pending";
-        } else if (backendStatus === "aprobada") {
-          frontendStatus = "approved";
-        } else if (backendStatus === "rechazada") {
-          frontendStatus = "rejected";
-        }
-      }
+      const backendStatus = data.solicitud_dueno?.estado;
+      const frontendStatus = mapEstadoDueno(backendRole, backendStatus);
 
       const user = {
         ...data.usuario,
@@ -164,63 +145,17 @@ export default function Register() {
       navigate("/inicio");
 
     } catch (error) {
-      const backendErrors =
-        error.data || {};
+      const backendErrors = error.data || {};
 
-      const nuevosErrores = {};
-
-      if (backendErrors.username) {
-        nuevosErrores.username =
-          Array.isArray(backendErrors.username)
-            ? backendErrors.username[0]
-            : backendErrors.username;
-      }
-
-      if (backendErrors.email) {
-        nuevosErrores.email =
-          Array.isArray(backendErrors.email)
-            ? backendErrors.email[0]
-            : backendErrors.email;
-      }
-
-      if (backendErrors.password) {
-        nuevosErrores.password =
-          Array.isArray(backendErrors.password)
-            ? backendErrors.password[0]
-            : backendErrors.password;
-      }
-
-      if (backendErrors.confirm_password) {
-        nuevosErrores.confirm =
-          Array.isArray(
-            backendErrors.confirm_password
-          )
-            ? backendErrors.confirm_password[0]
-            : backendErrors.confirm_password;
-      }
-
-      if (backendErrors.nombre_cancha) {
-        nuevosErrores.cancha =
-          Array.isArray(
-            backendErrors.nombre_cancha
-          )
-            ? backendErrors.nombre_cancha[0]
-            : backendErrors.nombre_cancha;
-      }
-
-      if (backendErrors.direccion) {
-        nuevosErrores.direccion =
-          Array.isArray(backendErrors.direccion)
-            ? backendErrors.direccion[0]
-            : backendErrors.direccion;
-      }
-
-      if (backendErrors.telefono) {
-        nuevosErrores.telefono =
-          Array.isArray(backendErrors.telefono)
-            ? backendErrors.telefono[0]
-            : backendErrors.telefono;
-      }
+      const nuevosErrores = mapearErroresDeCampos(backendErrors, {
+        username: "username",
+        email: "email",
+        password: "password",
+        confirm_password: "confirm",
+        nombre_cancha: "cancha",
+        direccion: "direccion",
+        telefono: "telefono",
+      });
 
       setErrors(nuevosErrores);
 

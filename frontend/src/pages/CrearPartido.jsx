@@ -288,13 +288,26 @@ export default function CrearPartido() {
       playersList: [...nuevoPartido.playersList],
     });
 
-    const horariosDelDia =
-      cancha.horarios?.[horarioSeleccionado.dia] || [];
+    const indiceCancha = CANCHAS_MOCK.findIndex(
+      (item) => item.id === cancha.id
+    );
 
-    cancha.horarios[horarioSeleccionado.dia] =
-      horariosDelDia.filter(
-        (hora) => hora !== horarioSeleccionado.hora
-      );
+    if (indiceCancha !== -1) {
+      const horariosDelDia =
+        CANCHAS_MOCK[indiceCancha].horarios?.[
+          horarioSeleccionado.dia
+        ] || [];
+
+      CANCHAS_MOCK[indiceCancha] = {
+        ...CANCHAS_MOCK[indiceCancha],
+        horarios: {
+          ...CANCHAS_MOCK[indiceCancha].horarios,
+          [horarioSeleccionado.dia]: horariosDelDia.filter(
+            (hora) => hora !== horarioSeleccionado.hora
+          ),
+        },
+      };
+    }
 
     setMensaje("¡Partido creado correctamente!");
 

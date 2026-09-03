@@ -4,43 +4,20 @@ import Header from "../components/Header";
 import BottomNavbar from "../components/BottomNavbar";
 import CanchaCard from "../components/CanchaCard";
 import { CANCHAS_MOCK } from "../data/canchas";
-
-
-function obtenerUsuario() {
-  try {
-    return JSON.parse(localStorage.getItem("user")) || null;
-  } catch {
-    return null;
-  }
-}
+import { getAuthUser } from "../utils/authUser";
 
 
 export default function Canchas() {
   const navigate = useNavigate();
 
-  const usuario = obtenerUsuario();
-
-  const rol = usuario?.role?.trim().toLowerCase();
-  const estado = usuario?.status?.trim().toLowerCase();
-
-  const esAdmin = rol === "admin";
-
-  const esOwner = rol === "owner";
-
-  const ownerAprobado =
-    esOwner && estado === "approved";
-
-  const ownerPendiente =
-    esOwner && estado === "pending";
-
-  const ownerRechazado =
-    esOwner && estado === "rejected";
-
-  const puedeGestionarCanchas =
-    esAdmin || ownerAprobado;
-
-  const emailUsuario =
-    usuario?.email?.trim().toLowerCase();
+  const {
+    esAdmin,
+    ownerAprobado,
+    ownerPendiente,
+    ownerRechazado,
+    puedeGestionarCanchas,
+    emailUsuario,
+  } = getAuthUser();
 
 
   return (

@@ -31,54 +31,21 @@ import {
   obtenerPromedioCancha,
 } from "../data/calificaciones";
 
-
-function obtenerUsuario() {
-  try {
-    return (
-      JSON.parse(
-        localStorage.getItem("user")
-      ) || null
-    );
-  } catch {
-    return null;
-  }
-}
+import { getAuthUser } from "../utils/authUser";
 
 
 export default function CanchaForm() {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  const usuario = obtenerUsuario();
-
-  const rol = usuario?.role
-    ?.trim()
-    .toLowerCase();
-
-  const estado = usuario?.status
-    ?.trim()
-    .toLowerCase();
-
-  const esAdmin =
-    rol === "admin";
-
-  const esOwner =
-    rol === "owner";
-
-  const esJugador =
-    rol === "player";
-
-  const ownerAprobado =
-    esOwner &&
-    estado === "approved";
-
-  const puedeGestionar =
-    esAdmin ||
-    ownerAprobado;
-
-  const emailUsuario = usuario?.email
-    ?.trim()
-    .toLowerCase();
+  const {
+    usuario,
+    esAdmin,
+    esJugador,
+    ownerAprobado,
+    puedeGestionarCanchas: puedeGestionar,
+    emailUsuario,
+  } = getAuthUser();
 
   const esNueva = !id;
 

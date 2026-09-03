@@ -10,6 +10,16 @@ class Perfil(models.Model):
         JUGADOR = "jugador", "Jugador"
         DUENO_CANCHA = "dueno_cancha", "Dueño de cancha"
 
+    class Posicion(models.TextChoices):
+        DELANTERO = "Delantero", "Delantero"
+        MEDIOCAMPISTA = "Mediocampista", "Mediocampista"
+        DEFENSOR = "Defensor", "Defensor"
+        PORTERO = "Portero", "Portero"
+
+    class PiernaHabil(models.TextChoices):
+        DERECHA = "Derecha", "Derecha"
+        IZQUIERDA = "Izquierda", "Izquierda"
+
     usuario = models.OneToOneField(
         User,
         on_delete=models.CASCADE,
@@ -33,11 +43,13 @@ class Perfil(models.Model):
 
     posicion = models.CharField(
         max_length=50,
+        choices=Posicion.choices,
         blank=True
     )
 
     pierna_habil = models.CharField(
         max_length=20,
+        choices=PiernaHabil.choices,
         blank=True
     )
 
