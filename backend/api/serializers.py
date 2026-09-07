@@ -12,6 +12,7 @@ from .models import (
     Cancha,
     CUPO_POR_TIPO,
     MODALIDAD_POR_CUPO,
+    Notificacion,
     Partido,
     ParticipacionPartido,
     InvitacionPartido,
@@ -625,6 +626,30 @@ class InvitacionPartidoSerializer(serializers.ModelSerializer):
             "remitente_username",
             "estado",
             "fecha_creacion",
+        )
+
+
+class NotificacionSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Notificacion
+
+        fields = (
+            "id",
+            "tipo",
+            "mensaje",
+            "leida",
+            "fecha_creacion",
+            "partido",
+        )
+
+        read_only_fields = (
+            "id",
+            "tipo",
+            "mensaje",
+            "leida",
+            "fecha_creacion",
+            "partido",
         )
 
 

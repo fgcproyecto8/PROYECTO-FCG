@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { CalendarCheck, Plus } from "lucide-react";
 
 import Header from "../components/Header";
@@ -16,10 +16,12 @@ import { DEFAULT_AVATAR } from "../utils/avatar.js";
 
 import {
   getAmigos,
+  getPartidos,
   invitarAPartido,
 } from "../services/api.js";
 
 import { useMisPartidos } from "../hooks/useMisPartidos.js";
+import { adaptarPartido } from "../utils/partidoAdapter.js";
 
 function adaptarAmigo(usuario) {
   return {
@@ -32,6 +34,7 @@ function adaptarAmigo(usuario) {
 
 export default function Partidos() {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [query, setQuery] = useState("");
 
@@ -74,6 +77,56 @@ export default function Partidos() {
         console.error("Error al cargar amigos:", error);
       });
   }, []);
+
+  // Deep link desde una notificacion (invitacion a partido o aviso de
+  // partido proximo): llega con { partidoId } en el state de la ruta.
+  // Se busca ese partido puntual en el backend (id real, sin mocks) y
+  // se abre directamente su modal de detalles; despues se limpia el
+  // state para que no se reabra solo con un refresh o al volver atras.
+  useEffect(() => {
+    const partidoId = location.state?.partidoId;
+
+    if (!partidoId) {
+      return;
+    }
+
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      return;
+    }
+
+    getPartidos(token)
+      .then((data) => {
+        const encontrado = data.find(
+          (partido) => partido.id === partidoId
+        );
+
+        if (encontrado) {
+          setPartidoDetalle(adaptarPartido(encontrado));
+        }
+      })
+      .catch((error) => {
+        console.error(
+          "Error al abrir el partido desde la notificación:",
+          error
+        );
+      })
+      .finally(() => {
+        navigate(location.pathname, {
+          replace: true,
+          state: {},
+        });
+      });
+  }, [location.state, location.pathname, navigate]);
+
+  // Cierra el modal de detalles antes de delegar en el flujo real de
+  // union (handleJoin), el mismo que usan las tarjetas: si el partido
+  // es privado, handleJoin abre JoinPrivateMatchModal a continuación.
+  const handleJoinDesdeDetalles = (match) => {
+    setPartidoDetalle(null);
+    handleJoin(match);
+  };
 
   /*
    * Abrir modal de invitación.
@@ -274,6 +327,7 @@ export default function Partidos() {
             puedeInvitarDesdeDetalles
           }
           onInvite={handleOpenInvite}
+          onJoin={handleJoinDesdeDetalles}
         />
       )}
 

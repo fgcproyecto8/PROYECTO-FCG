@@ -24,6 +24,9 @@ from .views import (
     invitaciones_partido_recibidas,
     aceptar_invitacion_partido,
     rechazar_invitacion_partido,
+    notificaciones,
+    marcar_notificacion_leida,
+    marcar_todas_notificaciones_leidas,
 )
 
 
@@ -122,5 +125,20 @@ urlpatterns = [
     path(
         "partidos/<int:partido_id>/invitar/",
         invitar_a_partido
+    ),
+
+    path(
+        "notificaciones/",
+        notificaciones
+    ),
+
+    path(
+        "notificaciones/leer-todas/",
+        marcar_todas_notificaciones_leidas
+    ),
+
+    path(
+        "notificaciones/<int:notificacion_id>/leer/",
+        marcar_notificacion_leida
     ),
 ]

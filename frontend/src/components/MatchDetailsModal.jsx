@@ -15,6 +15,7 @@ export default function MatchDetailsModal({
   onClose,
   canInvite = false,
   onInvite,
+  onJoin,
 }) {
   if (!match) return null;
 
@@ -22,6 +23,8 @@ export default function MatchDetailsModal({
 
   const esPrivado =
     match.type?.trim().toLowerCase() === "privado";
+
+  const estaLleno = match.players >= match.maxPlayers;
 
   const mostrarUsername = (username) => {
     if (!username) return "@usuario";
@@ -231,6 +234,22 @@ export default function MatchDetailsModal({
                 {match.descripcion}
               </p>
             </div>
+          )}
+
+          {/* Unirse: solo si todavia no soy participante */}
+          {!match.estoyUnido && onJoin && (
+            <button
+              type="button"
+              disabled={estaLleno}
+              onClick={() => onJoin(match)}
+              className={`w-full rounded-xl border py-2.5 text-sm font-semibold transition ${
+                estaLleno
+                  ? "cursor-not-allowed border-slate-300 bg-slate-100 text-slate-400 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-500"
+                  : "border-emerald-500/60 bg-emerald-500 text-white hover:bg-emerald-600"
+              }`}
+            >
+              {estaLleno ? "Completo" : "Unirse a este partido"}
+            </button>
           )}
 
           <button
