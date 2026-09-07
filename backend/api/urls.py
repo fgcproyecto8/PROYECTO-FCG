@@ -17,6 +17,13 @@ from .views import (
     eliminar_amigo,
     canchas,
     cancha_detalle,
+    partidos,
+    unirse_partido,
+    abandonar_partido,
+    invitar_a_partido,
+    invitaciones_partido_recibidas,
+    aceptar_invitacion_partido,
+    rechazar_invitacion_partido,
 )
 
 
@@ -80,5 +87,40 @@ urlpatterns = [
     path(
         "canchas/<int:cancha_id>/",
         cancha_detalle
+    ),
+
+    path(
+        "partidos/",
+        partidos
+    ),
+
+    path(
+        "partidos/invitaciones/",
+        invitaciones_partido_recibidas
+    ),
+
+    path(
+        "partidos/invitaciones/<int:invitacion_id>/aceptar/",
+        aceptar_invitacion_partido
+    ),
+
+    path(
+        "partidos/invitaciones/<int:invitacion_id>/rechazar/",
+        rechazar_invitacion_partido
+    ),
+
+    path(
+        "partidos/<int:partido_id>/unirse/",
+        unirse_partido
+    ),
+
+    path(
+        "partidos/<int:partido_id>/abandonar/",
+        abandonar_partido
+    ),
+
+    path(
+        "partidos/<int:partido_id>/invitar/",
+        invitar_a_partido
     ),
 ]

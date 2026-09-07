@@ -1,7 +1,14 @@
 from django.contrib import admin
 from django.utils import timezone
 
-from .models import Cancha, Perfil, SolicitudDueno
+from .models import (
+    Cancha,
+    InvitacionPartido,
+    ParticipacionPartido,
+    Partido,
+    Perfil,
+    SolicitudDueno,
+)
 
 
 @admin.register(Perfil)
@@ -99,4 +106,63 @@ class CanchaAdmin(admin.ModelAdmin):
         "direccion",
         "dueno__username",
         "dueno__email",
+    )
+
+
+@admin.register(Partido)
+class PartidoAdmin(admin.ModelAdmin):
+    list_display = (
+        "nombre",
+        "cancha",
+        "creador",
+        "fecha",
+        "hora",
+        "cupo",
+        "es_publico",
+    )
+
+    list_filter = (
+        "es_publico",
+        "fecha",
+    )
+
+    search_fields = (
+        "nombre",
+        "cancha__nombre",
+        "creador__username",
+    )
+
+
+@admin.register(ParticipacionPartido)
+class ParticipacionPartidoAdmin(admin.ModelAdmin):
+    list_display = (
+        "partido",
+        "usuario",
+        "fecha_union",
+    )
+
+    search_fields = (
+        "partido__nombre",
+        "usuario__username",
+    )
+
+
+@admin.register(InvitacionPartido)
+class InvitacionPartidoAdmin(admin.ModelAdmin):
+    list_display = (
+        "partido",
+        "remitente",
+        "destinatario",
+        "estado",
+        "fecha_creacion",
+    )
+
+    list_filter = (
+        "estado",
+    )
+
+    search_fields = (
+        "partido__nombre",
+        "remitente__username",
+        "destinatario__username",
     )

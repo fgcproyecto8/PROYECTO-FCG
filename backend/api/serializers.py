@@ -1,4 +1,5 @@
 from django.contrib.auth.models import User
+from django.contrib.auth.hashers import make_password
 from django.contrib.auth.password_validation import validate_password
 from django.db import transaction
 from django.db.models import Avg, Q
@@ -9,6 +10,11 @@ from rest_framework import serializers
 
 from .models import (
     Cancha,
+    CUPO_POR_TIPO,
+    MODALIDAD_POR_CUPO,
+    Partido,
+    ParticipacionPartido,
+    InvitacionPartido,
     Perfil,
     SolicitudDueno,
     SolicitudAmistad,
@@ -386,6 +392,240 @@ class EnviarSolicitudAmistadSerializer(serializers.Serializer):
     destinatario_id = serializers.IntegerField(
         min_value=1
     )
+
+
+class PartidoSerializer(serializers.ModelSerializer):
+
+    cancha = serializers.PrimaryKeyRelatedField(
+        queryset=Cancha.objects.all()
+    )
+
+    cancha_nombre = serializers.CharField(
+        source="cancha.nombre",
+        read_only=True
+    )
+
+    cancha_direccion = serializers.CharField(
+        source="cancha.direccion",
+        read_only=True
+    )
+
+    cancha_imagen = serializers.SerializerMethodField()
+
+    # write_only: nunca se serializa en la respuesta. Solo se exige
+    # cuando es_publico=False (ver validate()).
+    password = serializers.CharField(
+        write_only=True,
+        required=False,
+        allow_blank=True
+    )
+
+    jugadores = serializers.SerializerMethodField()
+    cantidad_jugadores = serializers.SerializerMethodField()
+    modalidad = serializers.SerializerMethodField()
+    precio_total = serializers.SerializerMethodField()
+    precio_por_jugador = serializers.SerializerMethodField()
+    estoy_unido = serializers.SerializerMethodField()
+
+    creador_username = serializers.CharField(
+        source="creador.username",
+        read_only=True
+    )
+
+    def get_cancha_imagen(self, partido):
+        request = self.context.get("request")
+
+        if not partido.cancha.imagen:
+            return None
+
+        if request:
+            return request.build_absolute_uri(
+                partido.cancha.imagen.url
+            )
+
+        return partido.cancha.imagen.url
+
+    def get_jugadores(self, partido):
+        # partido.participaciones.all() (sin filter/order_by/select_related
+        # encadenados) es lo unico que respeta el prefetch_related hecho en
+        # la vista; agregarle .order_by() aca dispararia una query nueva
+        # por partido (N+1) al listar varios.
+        participaciones = sorted(
+            partido.participaciones.all(),
+            key=lambda participacion: participacion.fecha_union
+        )
+
+        return [
+            {
+                "id": participacion.usuario.id,
+                "username": participacion.usuario.username,
+            }
+            for participacion in participaciones
+        ]
+
+    def get_cantidad_jugadores(self, partido):
+        return len(partido.participaciones.all())
+
+    def get_modalidad(self, partido):
+        return MODALIDAD_POR_CUPO.get(partido.cupo, "—")
+
+    def get_precio_total(self, partido):
+        return partido.cancha.precio
+
+    def get_precio_por_jugador(self, partido):
+        if not partido.cupo:
+            return 0
+
+        return round(partido.cancha.precio / partido.cupo)
+
+    def get_estoy_unido(self, partido):
+        request = self.context.get("request")
+
+        if not request or not request.user.is_authenticated:
+            return False
+
+        # Igual que en get_jugadores: .all() respeta el prefetch_related
+        # de la vista, .filter() dispararia una query nueva por partido.
+        return any(
+            participacion.usuario_id == request.user.id
+            for participacion in partido.participaciones.all()
+        )
+
+    def validate(self, data):
+        es_publico = data.get("es_publico", True)
+        password = data.get("password", "")
+
+        if not es_publico and not password.strip():
+            raise serializers.ValidationError({
+                "password": "Ingresá una contraseña para el partido privado."
+            })
+
+        nombre = data.get("nombre", "").strip()
+
+        if nombre and Partido.objects.filter(
+            nombre__iexact=nombre
+        ).exists():
+            raise serializers.ValidationError({
+                "nombre": "Ya existe un partido con ese nombre."
+            })
+
+        cancha = data.get("cancha")
+        fecha = data.get("fecha")
+        hora = data.get("hora")
+
+        if cancha and fecha and hora:
+            if Partido.objects.filter(
+                cancha=cancha,
+                fecha=fecha,
+                hora=hora
+            ).exists():
+                raise serializers.ValidationError({
+                    "horario": "Ese horario ya está ocupado por otro partido."
+                })
+
+        return data
+
+    @transaction.atomic
+    def create(self, validated_data):
+        password_plana = validated_data.pop("password", "")
+        cancha = validated_data["cancha"]
+        creador = validated_data["creador"]
+
+        validated_data["cupo"] = CUPO_POR_TIPO.get(cancha.tipo, 10)
+
+        validated_data["password"] = (
+            make_password(password_plana)
+            if not validated_data.get("es_publico", True)
+            else ""
+        )
+
+        partido = Partido.objects.create(**validated_data)
+
+        ParticipacionPartido.objects.create(
+            partido=partido,
+            usuario=creador
+        )
+
+        return partido
+
+    class Meta:
+        model = Partido
+
+        fields = (
+            "id",
+            "nombre",
+            "descripcion",
+            "es_publico",
+            "password",
+            "fecha",
+            "hora",
+            "cupo",
+            "cancha",
+            "cancha_nombre",
+            "cancha_direccion",
+            "cancha_imagen",
+            "jugadores",
+            "cantidad_jugadores",
+            "modalidad",
+            "precio_total",
+            "precio_por_jugador",
+            "estoy_unido",
+            "creador_username",
+            "fecha_creacion",
+        )
+
+        read_only_fields = (
+            "id",
+            "cupo",
+            "cancha_nombre",
+            "cancha_direccion",
+            "cancha_imagen",
+            "jugadores",
+            "cantidad_jugadores",
+            "modalidad",
+            "precio_total",
+            "precio_por_jugador",
+            "estoy_unido",
+            "creador_username",
+            "fecha_creacion",
+        )
+
+
+class InvitarAPartidoSerializer(serializers.Serializer):
+    destinatario_id = serializers.IntegerField(
+        min_value=1
+    )
+
+
+class InvitacionPartidoSerializer(serializers.ModelSerializer):
+
+    remitente_username = serializers.CharField(
+        source="remitente.username",
+        read_only=True
+    )
+
+    partido_nombre = serializers.CharField(
+        source="partido.nombre",
+        read_only=True
+    )
+
+    partido_cancha_nombre = serializers.CharField(
+        source="partido.cancha.nombre",
+        read_only=True
+    )
+
+    class Meta:
+        model = InvitacionPartido
+
+        fields = (
+            "id",
+            "partido",
+            "partido_nombre",
+            "partido_cancha_nombre",
+            "remitente_username",
+            "estado",
+            "fecha_creacion",
+        )
 
 
 class SolicitudAmistadRecibidaSerializer(serializers.ModelSerializer):
