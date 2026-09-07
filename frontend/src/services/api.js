@@ -404,3 +404,35 @@ export function rechazarInvitacionPartido(token, invitacionId) {
     },
   });
 }
+
+
+// NOTIFICACIONES
+
+export function getNotificaciones(token) {
+  return request("/notificaciones/", {
+    method: "GET",
+    headers: {
+      Authorization: `Token ${token}`,
+    },
+  });
+}
+
+
+export function marcarNotificacionLeida(token, notificacionId) {
+  return request(`/notificaciones/${notificacionId}/leer/`, {
+    method: "POST",
+    headers: {
+      Authorization: `Token ${token}`,
+    },
+  });
+}
+
+
+export function marcarTodasNotificacionesLeidas(token) {
+  return request("/notificaciones/leer-todas/", {
+    method: "POST",
+    headers: {
+      Authorization: `Token ${token}`,
+    },
+  });
+}

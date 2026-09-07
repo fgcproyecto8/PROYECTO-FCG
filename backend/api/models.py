@@ -429,6 +429,92 @@ class SolicitudAmistad(models.Model):
         )
 
 
+class Notificacion(models.Model):
+
+    class Tipo(models.TextChoices):
+        SOLICITUD_AMISTAD_RECIBIDA = "solicitud_amistad_recibida", "Solicitud de amistad recibida"
+        SOLICITUD_AMISTAD_ACEPTADA = "solicitud_amistad_aceptada", "Solicitud de amistad aceptada"
+        SOLICITUD_AMISTAD_RECHAZADA = "solicitud_amistad_rechazada", "Solicitud de amistad rechazada"
+        INVITACION_PARTIDO = "invitacion_partido", "Invitación a un partido"
+        PARTIDO_PROXIMO = "partido_proximo", "Partido próximo a comenzar"
+        INVITACION_ACEPTADA = "invitacion_aceptada", "Invitación a partido aceptada"
+        INVITACION_RECHAZADA = "invitacion_rechazada", "Invitación a partido rechazada"
+
+    destinatario = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="notificaciones"
+    )
+
+    tipo = models.CharField(
+        max_length=30,
+        choices=Tipo.choices
+    )
+
+    mensaje = models.CharField(
+        max_length=255
+    )
+
+    leida = models.BooleanField(
+        default=False
+    )
+
+    fecha_creacion = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    # Referencias opcionales segun el tipo. SET_NULL (no CASCADE) para
+    # que la notificacion sobreviva como historial aunque el objeto
+    # referenciado se borre despues (por ejemplo, una SolicitudAmistad
+    # o InvitacionPartido rechazada que se vuelve a crear, o un Partido
+    # que se borra cuando el ultimo participante lo abandona).
+    actor = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="notificaciones_generadas"
+    )
+
+    partido = models.ForeignKey(
+        Partido,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="notificaciones"
+    )
+
+    solicitud_amistad = models.ForeignKey(
+        SolicitudAmistad,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="notificaciones"
+    )
+
+    invitacion_partido = models.ForeignKey(
+        InvitacionPartido,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="notificaciones"
+    )
+
+    class Meta:
+        ordering = ["-fecha_creacion"]
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=["destinatario", "partido"],
+                condition=models.Q(tipo="partido_proximo"),
+                name="notificacion_partido_proximo_unica"
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.destinatario.username}: {self.mensaje}"
+
+
 def usuario_puede_gestionar_canchas(user):
     """True si el usuario puede administrar canchas en general
     (por ejemplo, crear una nueva). No depende de una cancha puntual."""

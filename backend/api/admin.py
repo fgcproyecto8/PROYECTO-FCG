@@ -4,6 +4,7 @@ from django.utils import timezone
 from .models import (
     Cancha,
     InvitacionPartido,
+    Notificacion,
     ParticipacionPartido,
     Partido,
     Perfil,
@@ -165,4 +166,24 @@ class InvitacionPartidoAdmin(admin.ModelAdmin):
         "partido__nombre",
         "remitente__username",
         "destinatario__username",
+    )
+
+
+@admin.register(Notificacion)
+class NotificacionAdmin(admin.ModelAdmin):
+    list_display = (
+        "destinatario",
+        "tipo",
+        "leida",
+        "fecha_creacion",
+    )
+
+    list_filter = (
+        "tipo",
+        "leida",
+    )
+
+    search_fields = (
+        "destinatario__username",
+        "mensaje",
     )

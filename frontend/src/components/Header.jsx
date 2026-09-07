@@ -1,4 +1,5 @@
 import ThemeToggle from "./ThemeToggle.jsx";
+import NotificationBell from "./NotificationBell.jsx";
 import logo from "../assets/pelota.png";
 
 export default function Header() {
@@ -20,8 +21,11 @@ export default function Header() {
           </span>
         </div>
 
-        {/* BOTÓN DARK MODE */}
-        <ThemeToggle />
+        {/* NOTIFICACIONES + BOTÓN DARK MODE */}
+        <div className="flex items-center gap-2">
+          <NotificationBell />
+          <ThemeToggle />
+        </div>
       </div>
     </header>
   );

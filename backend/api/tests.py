@@ -1,5 +1,8 @@
+from datetime import timedelta
+
 from django.contrib.auth.models import User
 from django.test import TestCase
+from django.utils import timezone
 
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
@@ -8,6 +11,7 @@ from .models import (
     Cancha,
     CalificacionUsuario,
     InvitacionPartido,
+    Notificacion,
     ParticipacionPartido,
     Partido,
     Perfil,
@@ -1080,6 +1084,369 @@ class PartidoTests(TestCase):
                 "post",
                 f"/api/partidos/invitaciones/{id_inexistente}/rechazar/",
             ),
+        ]
+
+        for metodo, url in endpoints:
+            with self.subTest(metodo=metodo, url=url):
+                respuesta = getattr(self.client, metodo)(url)
+                self.assertEqual(respuesta.status_code, 401)
+
+
+class NotificacionTests(TestCase):
+    """Generacion de notificaciones para eventos reales de amistades,
+    invitaciones y partidos; permisos de acceso; y el aviso de
+    partido proximo con su deduplicacion."""
+
+    def setUp(self):
+        self.client = APIClient()
+
+        self.usuario1 = crear_jugador("notif_usuario1")
+        self.usuario2 = crear_jugador("notif_usuario2")
+
+        self.dueno = crear_dueno(
+            "notif_dueno", SolicitudDueno.Estado.APROBADA
+        )
+
+        self.cancha = Cancha.objects.create(
+            dueno=self.dueno,
+            nombre="Cancha Notificaciones Test",
+            tipo=Cancha.Tipo.FUTBOL_5,
+            direccion="Calle Notif 1",
+            telefono="2222222",
+            precio=10000,
+        )
+
+    def _crear_partido(self, creador, **extra):
+        datos = {
+            "cancha": self.cancha.id,
+            "nombre": "Partido Notificaciones",
+            "descripcion": "",
+            "fecha": "2026-09-10",
+            "hora": "20:00",
+            "es_publico": True,
+        }
+        datos.update(extra)
+
+        self.client.force_authenticate(user=creador)
+        respuesta = self.client.post("/api/partidos/", datos)
+        self.assertEqual(respuesta.status_code, 201)
+
+        return respuesta.data
+
+    # --- Solicitudes de amistad ---
+
+    def test_enviar_solicitud_notifica_al_destinatario(self):
+        self.client.force_authenticate(user=self.usuario1)
+
+        respuesta = self.client.post(
+            "/api/amistades/solicitudes/enviar/",
+            {"destinatario_id": self.usuario2.id},
+        )
+        self.assertEqual(respuesta.status_code, 201)
+
+        notificacion = Notificacion.objects.get(
+            destinatario=self.usuario2,
+            tipo=Notificacion.Tipo.SOLICITUD_AMISTAD_RECIBIDA,
+        )
+        self.assertIn("notif_usuario1", notificacion.mensaje)
+        self.assertFalse(notificacion.leida)
+
+    def test_aceptar_solicitud_notifica_al_remitente(self):
+        solicitud = SolicitudAmistad.objects.create(
+            remitente=self.usuario1, destinatario=self.usuario2
+        )
+
+        self.client.force_authenticate(user=self.usuario2)
+        respuesta = self.client.post(
+            f"/api/amistades/solicitudes/{solicitud.id}/aceptar/"
+        )
+        self.assertEqual(respuesta.status_code, 200)
+
+        notificacion = Notificacion.objects.get(
+            destinatario=self.usuario1,
+            tipo=Notificacion.Tipo.SOLICITUD_AMISTAD_ACEPTADA,
+        )
+        self.assertIn("notif_usuario2", notificacion.mensaje)
+
+    def test_rechazar_solicitud_notifica_al_remitente(self):
+        solicitud = SolicitudAmistad.objects.create(
+            remitente=self.usuario1, destinatario=self.usuario2
+        )
+
+        self.client.force_authenticate(user=self.usuario2)
+        respuesta = self.client.post(
+            f"/api/amistades/solicitudes/{solicitud.id}/rechazar/"
+        )
+        self.assertEqual(respuesta.status_code, 200)
+
+        self.assertTrue(
+            Notificacion.objects.filter(
+                destinatario=self.usuario1,
+                tipo=Notificacion.Tipo.SOLICITUD_AMISTAD_RECHAZADA,
+            ).exists()
+        )
+
+    # --- Invitaciones a partidos ---
+
+    def test_invitar_a_partido_notifica_al_destinatario(self):
+        SolicitudAmistad.objects.create(
+            remitente=self.usuario1,
+            destinatario=self.usuario2,
+            estado=SolicitudAmistad.Estado.ACEPTADA,
+        )
+
+        partido = self._crear_partido(self.usuario1)
+
+        respuesta = self.client.post(
+            f"/api/partidos/{partido['id']}/invitar/",
+            {"destinatario_id": self.usuario2.id},
+        )
+        self.assertEqual(respuesta.status_code, 201)
+
+        notificacion = Notificacion.objects.get(
+            destinatario=self.usuario2,
+            tipo=Notificacion.Tipo.INVITACION_PARTIDO,
+        )
+        self.assertEqual(notificacion.partido_id, partido["id"])
+
+    def test_aceptar_invitacion_notifica_al_remitente(self):
+        SolicitudAmistad.objects.create(
+            remitente=self.usuario1,
+            destinatario=self.usuario2,
+            estado=SolicitudAmistad.Estado.ACEPTADA,
+        )
+
+        partido = self._crear_partido(self.usuario1)
+
+        respuesta_invitar = self.client.post(
+            f"/api/partidos/{partido['id']}/invitar/",
+            {"destinatario_id": self.usuario2.id},
+        )
+        invitacion_id = respuesta_invitar.data["invitacion_id"]
+
+        self.client.force_authenticate(user=self.usuario2)
+        respuesta = self.client.post(
+            f"/api/partidos/invitaciones/{invitacion_id}/aceptar/"
+        )
+        self.assertEqual(respuesta.status_code, 200)
+
+        notificacion = Notificacion.objects.get(
+            destinatario=self.usuario1,
+            tipo=Notificacion.Tipo.INVITACION_ACEPTADA,
+        )
+        self.assertIn("notif_usuario2", notificacion.mensaje)
+
+    def test_rechazar_invitacion_notifica_al_remitente(self):
+        SolicitudAmistad.objects.create(
+            remitente=self.usuario1,
+            destinatario=self.usuario2,
+            estado=SolicitudAmistad.Estado.ACEPTADA,
+        )
+
+        partido = self._crear_partido(self.usuario1)
+
+        respuesta_invitar = self.client.post(
+            f"/api/partidos/{partido['id']}/invitar/",
+            {"destinatario_id": self.usuario2.id},
+        )
+        invitacion_id = respuesta_invitar.data["invitacion_id"]
+
+        self.client.force_authenticate(user=self.usuario2)
+        respuesta = self.client.post(
+            f"/api/partidos/invitaciones/{invitacion_id}/rechazar/"
+        )
+        self.assertEqual(respuesta.status_code, 200)
+
+        self.assertTrue(
+            Notificacion.objects.filter(
+                destinatario=self.usuario1,
+                tipo=Notificacion.Tipo.INVITACION_RECHAZADA,
+            ).exists()
+        )
+
+    # --- Listado y permisos ---
+
+    def test_listar_notificaciones_requiere_token(self):
+        respuesta = self.client.get("/api/notificaciones/")
+        self.assertEqual(respuesta.status_code, 401)
+
+    def test_listar_notificaciones_devuelve_solo_las_propias_ordenadas(self):
+        Notificacion.objects.create(
+            destinatario=self.usuario1,
+            tipo=Notificacion.Tipo.SOLICITUD_AMISTAD_RECIBIDA,
+            mensaje="Primera",
+        )
+        Notificacion.objects.create(
+            destinatario=self.usuario1,
+            tipo=Notificacion.Tipo.SOLICITUD_AMISTAD_RECIBIDA,
+            mensaje="Segunda",
+        )
+        Notificacion.objects.create(
+            destinatario=self.usuario2,
+            tipo=Notificacion.Tipo.SOLICITUD_AMISTAD_RECIBIDA,
+            mensaje="Ajena",
+        )
+
+        self.client.force_authenticate(user=self.usuario1)
+        respuesta = self.client.get("/api/notificaciones/")
+
+        self.assertEqual(respuesta.status_code, 200)
+        mensajes = [n["mensaje"] for n in respuesta.data]
+        self.assertEqual(mensajes, ["Segunda", "Primera"])
+
+    def test_marcar_notificacion_leida(self):
+        notificacion = Notificacion.objects.create(
+            destinatario=self.usuario1,
+            tipo=Notificacion.Tipo.SOLICITUD_AMISTAD_RECIBIDA,
+            mensaje="Prueba",
+        )
+
+        self.client.force_authenticate(user=self.usuario1)
+        respuesta = self.client.post(
+            f"/api/notificaciones/{notificacion.id}/leer/"
+        )
+        self.assertEqual(respuesta.status_code, 200)
+
+        notificacion.refresh_from_db()
+        self.assertTrue(notificacion.leida)
+
+    def test_no_puede_marcar_como_leida_una_notificacion_ajena(self):
+        notificacion = Notificacion.objects.create(
+            destinatario=self.usuario2,
+            tipo=Notificacion.Tipo.SOLICITUD_AMISTAD_RECIBIDA,
+            mensaje="Ajena",
+        )
+
+        self.client.force_authenticate(user=self.usuario1)
+        respuesta = self.client.post(
+            f"/api/notificaciones/{notificacion.id}/leer/"
+        )
+        self.assertEqual(respuesta.status_code, 404)
+
+        notificacion.refresh_from_db()
+        self.assertFalse(notificacion.leida)
+
+    def test_marcar_todas_como_leidas(self):
+        Notificacion.objects.create(
+            destinatario=self.usuario1,
+            tipo=Notificacion.Tipo.SOLICITUD_AMISTAD_RECIBIDA,
+            mensaje="Uno",
+        )
+        Notificacion.objects.create(
+            destinatario=self.usuario1,
+            tipo=Notificacion.Tipo.SOLICITUD_AMISTAD_RECIBIDA,
+            mensaje="Dos",
+        )
+
+        self.client.force_authenticate(user=self.usuario1)
+        respuesta = self.client.post("/api/notificaciones/leer-todas/")
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.data["actualizadas"], 2)
+
+        self.assertEqual(
+            Notificacion.objects.filter(
+                destinatario=self.usuario1, leida=False
+            ).count(),
+            0,
+        )
+
+    # --- Aviso de partido proximo ---
+
+    def test_genera_aviso_si_falta_menos_de_una_hora(self):
+        momento = timezone.localtime(
+            timezone.now() + timedelta(minutes=30)
+        )
+
+        partido = Partido.objects.create(
+            creador=self.usuario1,
+            cancha=self.cancha,
+            nombre="Partido Pronto",
+            fecha=momento.date(),
+            hora=momento.time(),
+            cupo=10,
+        )
+        ParticipacionPartido.objects.create(
+            partido=partido, usuario=self.usuario1
+        )
+
+        self.client.force_authenticate(user=self.usuario1)
+        respuesta = self.client.get("/api/notificaciones/")
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertTrue(
+            Notificacion.objects.filter(
+                destinatario=self.usuario1,
+                partido=partido,
+                tipo=Notificacion.Tipo.PARTIDO_PROXIMO,
+            ).exists()
+        )
+
+    def test_no_genera_aviso_si_falta_mas_de_una_hora(self):
+        momento = timezone.localtime(
+            timezone.now() + timedelta(hours=3)
+        )
+
+        partido = Partido.objects.create(
+            creador=self.usuario1,
+            cancha=self.cancha,
+            nombre="Partido Lejano",
+            fecha=momento.date(),
+            hora=momento.time(),
+            cupo=10,
+        )
+        ParticipacionPartido.objects.create(
+            partido=partido, usuario=self.usuario1
+        )
+
+        self.client.force_authenticate(user=self.usuario1)
+        self.client.get("/api/notificaciones/")
+
+        self.assertFalse(
+            Notificacion.objects.filter(
+                destinatario=self.usuario1,
+                partido=partido,
+                tipo=Notificacion.Tipo.PARTIDO_PROXIMO,
+            ).exists()
+        )
+
+    def test_aviso_de_partido_proximo_no_se_duplica(self):
+        momento = timezone.localtime(
+            timezone.now() + timedelta(minutes=30)
+        )
+
+        partido = Partido.objects.create(
+            creador=self.usuario1,
+            cancha=self.cancha,
+            nombre="Partido Pronto Duplicado",
+            fecha=momento.date(),
+            hora=momento.time(),
+            cupo=10,
+        )
+        ParticipacionPartido.objects.create(
+            partido=partido, usuario=self.usuario1
+        )
+
+        self.client.force_authenticate(user=self.usuario1)
+        self.client.get("/api/notificaciones/")
+        self.client.get("/api/notificaciones/")
+        self.client.get("/api/notificaciones/")
+
+        self.assertEqual(
+            Notificacion.objects.filter(
+                destinatario=self.usuario1,
+                partido=partido,
+                tipo=Notificacion.Tipo.PARTIDO_PROXIMO,
+            ).count(),
+            1,
+        )
+
+    def test_endpoints_de_notificaciones_requieren_token(self):
+        id_inexistente = 99999
+
+        endpoints = [
+            ("get", "/api/notificaciones/"),
+            ("post", "/api/notificaciones/leer-todas/"),
+            ("post", f"/api/notificaciones/{id_inexistente}/leer/"),
         ]
 
         for metodo, url in endpoints:

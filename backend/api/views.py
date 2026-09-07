@@ -1,8 +1,11 @@
+from datetime import datetime, timedelta
+
 from django.contrib.auth import authenticate
 from django.contrib.auth.hashers import check_password
 from django.contrib.auth.models import User
 from django.db import IntegrityError, transaction
 from django.db.models import Q, Avg, Count
+from django.utils import timezone
 
 from rest_framework.authtoken.models import Token
 from rest_framework.decorators import api_view, permission_classes
@@ -12,6 +15,7 @@ from rest_framework import status
 
 from .models import (
     Cancha,
+    Notificacion,
     Partido,
     ParticipacionPartido,
     InvitacionPartido,
@@ -32,10 +36,62 @@ from .serializers import (
     PartidoSerializer,
     InvitarAPartidoSerializer,
     InvitacionPartidoSerializer,
+    NotificacionSerializer,
     CalificacionUsuarioSerializer,
     EnviarSolicitudAmistadSerializer,
     SolicitudAmistadRecibidaSerializer,
 )
+
+
+def _generar_notificaciones_partido_proximo(usuario):
+    """Genera (si todavia no existe) una notificacion de tipo
+    PARTIDO_PROXIMO para cada partido del usuario cuyo inicio caiga
+    dentro de la proxima hora. Se llama de forma perezosa cada vez que
+    el usuario lista sus notificaciones (ver vista `notificaciones`),
+    ya que el proyecto no cuenta con un scheduler en background."""
+
+    ahora = timezone.now()
+    limite = ahora + timedelta(hours=1)
+
+    participaciones = ParticipacionPartido.objects.filter(
+        usuario=usuario,
+        partido__fecha__gte=timezone.localdate(),
+    ).select_related("partido")
+
+    for participacion in participaciones:
+        partido = participacion.partido
+
+        momento_partido = timezone.make_aware(
+            datetime.combine(partido.fecha, partido.hora)
+        )
+
+        if not (ahora <= momento_partido <= limite):
+            continue
+
+        ya_notificado = Notificacion.objects.filter(
+            destinatario=usuario,
+            partido=partido,
+            tipo=Notificacion.Tipo.PARTIDO_PROXIMO,
+        ).exists()
+
+        if ya_notificado:
+            continue
+
+        try:
+            Notificacion.objects.create(
+                destinatario=usuario,
+                tipo=Notificacion.Tipo.PARTIDO_PROXIMO,
+                mensaje=(
+                    f'Tu partido "{partido.nombre}" comienza a las '
+                    f'{partido.hora.strftime("%H:%M")}.'
+                ),
+                partido=partido,
+            )
+        except IntegrityError:
+            # Backstop ante una carrera entre dos requests casi
+            # simultaneas; el UniqueConstraint condicional del modelo
+            # ya evita el duplicado a nivel de base de datos.
+            pass
 
 
 @api_view(["GET"])
@@ -576,6 +632,14 @@ def enviar_solicitud_amistad(request):
         destinatario=destinatario
     )
 
+    Notificacion.objects.create(
+        destinatario=destinatario,
+        tipo=Notificacion.Tipo.SOLICITUD_AMISTAD_RECIBIDA,
+        mensaje=f"{request.user.username} te envió una solicitud de amistad.",
+        actor=request.user,
+        solicitud_amistad=solicitud,
+    )
+
     return Response(
         {
             "mensaje": "Solicitud enviada correctamente.",
@@ -636,6 +700,14 @@ def aceptar_solicitud_amistad(request, solicitud_id):
         ]
     )
 
+    Notificacion.objects.create(
+        destinatario=solicitud.remitente,
+        tipo=Notificacion.Tipo.SOLICITUD_AMISTAD_ACEPTADA,
+        mensaje=f"{request.user.username} aceptó tu solicitud de amistad.",
+        actor=request.user,
+        solicitud_amistad=solicitud,
+    )
+
     return Response({
         "mensaje": "Solicitud aceptada correctamente."
     })
@@ -665,6 +737,14 @@ def rechazar_solicitud_amistad(request, solicitud_id):
             "estado",
             "fecha_actualizacion"
         ]
+    )
+
+    Notificacion.objects.create(
+        destinatario=solicitud.remitente,
+        tipo=Notificacion.Tipo.SOLICITUD_AMISTAD_RECHAZADA,
+        mensaje=f"{request.user.username} rechazó tu solicitud de amistad.",
+        actor=request.user,
+        solicitud_amistad=solicitud,
     )
 
     return Response({
@@ -1023,6 +1103,18 @@ def invitar_a_partido(request, partido_id):
         destinatario=destinatario
     )
 
+    Notificacion.objects.create(
+        destinatario=destinatario,
+        tipo=Notificacion.Tipo.INVITACION_PARTIDO,
+        mensaje=(
+            f'{request.user.username} te invitó a jugar '
+            f'"{partido.nombre}".'
+        ),
+        actor=request.user,
+        partido=partido,
+        invitacion_partido=invitacion,
+    )
+
     return Response(
         {
             "mensaje": "Invitación enviada correctamente.",
@@ -1103,6 +1195,18 @@ def aceptar_invitacion_partido(request, invitacion_id):
             ]
         )
 
+        Notificacion.objects.create(
+            destinatario=invitacion.remitente,
+            tipo=Notificacion.Tipo.INVITACION_ACEPTADA,
+            mensaje=(
+                f'{request.user.username} aceptó tu invitación a '
+                f'"{partido.nombre}".'
+            ),
+            actor=request.user,
+            partido=partido,
+            invitacion_partido=invitacion,
+        )
+
     return Response({
         "mensaje": "Invitación aceptada. Ya formás parte del partido."
     })
@@ -1132,6 +1236,18 @@ def rechazar_invitacion_partido(request, invitacion_id):
             "estado",
             "fecha_actualizacion"
         ]
+    )
+
+    Notificacion.objects.create(
+        destinatario=invitacion.remitente,
+        tipo=Notificacion.Tipo.INVITACION_RECHAZADA,
+        mensaje=(
+            f'{request.user.username} rechazó tu invitación a '
+            f'"{invitacion.partido.nombre}".'
+        ),
+        actor=request.user,
+        partido=invitacion.partido,
+        invitacion_partido=invitacion,
     )
 
     return Response({
@@ -1251,3 +1367,63 @@ def cancha_detalle(request, cancha_id):
             context={"request": request}
         ).data
     )
+
+
+@api_view(["GET"])
+def notificaciones(request):
+
+    _generar_notificaciones_partido_proximo(request.user)
+
+    listado = Notificacion.objects.filter(
+        destinatario=request.user
+    )
+
+    serializer = NotificacionSerializer(
+        listado,
+        many=True
+    )
+
+    return Response(serializer.data)
+
+
+@api_view(["POST"])
+def marcar_notificacion_leida(request, notificacion_id):
+
+    notificacion = Notificacion.objects.filter(
+        id=notificacion_id,
+        destinatario=request.user
+    ).first()
+
+    if notificacion is None:
+        return Response(
+            {
+                "mensaje": "Notificación no encontrada."
+            },
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    notificacion.leida = True
+
+    notificacion.save(
+        update_fields=[
+            "leida"
+        ]
+    )
+
+    return Response({
+        "mensaje": "Notificación marcada como leída."
+    })
+
+
+@api_view(["POST"])
+def marcar_todas_notificaciones_leidas(request):
+
+    actualizadas = Notificacion.objects.filter(
+        destinatario=request.user,
+        leida=False
+    ).update(leida=True)
+
+    return Response({
+        "mensaje": "Notificaciones marcadas como leídas.",
+        "actualizadas": actualizadas,
+    })
