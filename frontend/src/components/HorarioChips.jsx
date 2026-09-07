@@ -4,7 +4,7 @@ import {
   Check,
   X,
 } from "lucide-react";
-import { HORARIOS_BASE } from "../data/canchas";
+import { HORARIOS_BASE } from "../data/horariosMock";
 
 export default function HorarioChips({
   titulo,

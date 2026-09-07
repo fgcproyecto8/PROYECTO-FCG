@@ -9,10 +9,13 @@ from rest_framework.response import Response
 from rest_framework import status
 
 from .models import (
+    Cancha,
     Perfil,
     SolicitudDueno,
     CalificacionUsuario,
     SolicitudAmistad,
+    usuario_puede_editar_cancha,
+    usuario_puede_gestionar_canchas,
 )
 
 from .serializers import (
@@ -20,6 +23,7 @@ from .serializers import (
     LoginSerializer,
     PerfilUpdateSerializer,
     UsuarioPublicoSerializer,
+    CanchaSerializer,
     CalificacionUsuarioSerializer,
     EnviarSolicitudAmistadSerializer,
     SolicitudAmistadRecibidaSerializer,
@@ -726,3 +730,117 @@ def eliminar_amigo(request, usuario_id):
     return Response({
         "mensaje": "Amigo eliminado correctamente."
     })
+
+
+@api_view(["GET", "POST"])
+def canchas(request):
+
+    if request.method == "GET":
+
+        listado = Cancha.objects.select_related(
+            "dueno"
+        ).order_by("-fecha_creacion")
+
+        serializer = CanchaSerializer(
+            listado,
+            many=True,
+            context={"request": request}
+        )
+
+        return Response(serializer.data)
+
+    # POST
+
+    if not usuario_puede_gestionar_canchas(request.user):
+        return Response(
+            {
+                "mensaje": "No tenés permiso para crear canchas."
+            },
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    serializer = CanchaSerializer(
+        data=request.data,
+        context={"request": request}
+    )
+
+    if not serializer.is_valid():
+        return Response(
+            serializer.errors,
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    cancha = serializer.save(dueno=request.user)
+
+    return Response(
+        CanchaSerializer(
+            cancha,
+            context={"request": request}
+        ).data,
+        status=status.HTTP_201_CREATED
+    )
+
+
+@api_view(["GET", "PATCH", "PUT", "DELETE"])
+def cancha_detalle(request, cancha_id):
+
+    cancha = Cancha.objects.select_related(
+        "dueno"
+    ).filter(
+        id=cancha_id
+    ).first()
+
+    if cancha is None:
+        return Response(
+            {
+                "mensaje": "Cancha no encontrada."
+            },
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    if request.method == "GET":
+        serializer = CanchaSerializer(
+            cancha,
+            context={"request": request}
+        )
+
+        return Response(serializer.data)
+
+    if not usuario_puede_editar_cancha(request.user, cancha):
+        return Response(
+            {
+                "mensaje": "No tenés permiso para modificar esta cancha."
+            },
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    if request.method == "DELETE":
+        cancha.delete()
+
+        return Response({
+            "mensaje": "Cancha eliminada correctamente."
+        })
+
+    # PATCH / PUT
+
+    serializer = CanchaSerializer(
+        cancha,
+        data=request.data,
+        partial=(request.method == "PATCH"),
+        context={"request": request}
+    )
+
+    if not serializer.is_valid():
+        return Response(
+            serializer.errors,
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    cancha_actualizada = serializer.save()
+
+    return Response(
+        CanchaSerializer(
+            cancha_actualizada,
+            context={"request": request}
+        ).data
+    )

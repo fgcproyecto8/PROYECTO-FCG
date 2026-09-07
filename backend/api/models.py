@@ -174,6 +174,57 @@ class CalificacionUsuario(models.Model):
         )
 
 
+class Cancha(models.Model):
+
+    class Tipo(models.TextChoices):
+        FUTBOL_5 = "FÚTBOL 5", "Fútbol 5"
+        FUTBOL_7 = "FÚTBOL 7", "Fútbol 7"
+        FUTBOL_11 = "FÚTBOL 11", "Fútbol 11"
+
+    dueno = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="canchas"
+    )
+
+    nombre = models.CharField(
+        max_length=150
+    )
+
+    tipo = models.CharField(
+        max_length=20,
+        choices=Tipo.choices,
+        default=Tipo.FUTBOL_5
+    )
+
+    direccion = models.CharField(
+        max_length=200
+    )
+
+    telefono = models.CharField(
+        max_length=30
+    )
+
+    precio = models.PositiveIntegerField()
+
+    imagen = models.ImageField(
+        upload_to="canchas/",
+        null=True,
+        blank=True
+    )
+
+    fecha_creacion = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    fecha_actualizacion = models.DateTimeField(
+        auto_now=True
+    )
+
+    def __str__(self):
+        return f"{self.nombre} ({self.dueno.username})"
+
+
 class SolicitudAmistad(models.Model):
 
     class Estado(models.TextChoices):
@@ -221,3 +272,40 @@ class SolicitudAmistad(models.Model):
             f"{self.destinatario.username} - "
             f"{self.estado}"
         )
+
+
+def usuario_puede_gestionar_canchas(user):
+    """True si el usuario puede administrar canchas en general
+    (por ejemplo, crear una nueva). No depende de una cancha puntual."""
+
+    if user.is_superuser:
+        return True
+
+    try:
+        perfil = user.perfil
+    except Perfil.DoesNotExist:
+        return False
+
+    if perfil.rol != Perfil.Rol.DUENO_CANCHA:
+        return False
+
+    try:
+        solicitud = user.solicitud_dueno
+    except SolicitudDueno.DoesNotExist:
+        return False
+
+    return solicitud.estado == SolicitudDueno.Estado.APROBADA
+
+
+def usuario_puede_editar_cancha(user, cancha):
+    """True si el usuario puede editar/eliminar esta cancha puntual:
+    el administrador puede con todas, un dueño aprobado solo con las
+    suyas."""
+
+    if user.is_superuser:
+        return True
+
+    return (
+        usuario_puede_gestionar_canchas(user)
+        and cancha.dueno_id == user.id
+    )

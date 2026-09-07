@@ -1,5 +1,5 @@
 import { ChevronRight } from "lucide-react";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 
 import Header from "../components/Header.jsx";
@@ -10,10 +10,8 @@ import BottomNavbar from "../components/BottomNavbar.jsx";
 import JoinPrivateMatchModal from "../components/JoinPrivateMatchModal.jsx";
 import LeaveMatchModal from "../components/LeaveMatchModal.jsx";
 
-import {
-  CANCHAS_MOCK,
-  formatPrecio,
-} from "../data/canchas";
+import { formatPrecio } from "../utils/format";
+import { getCanchas } from "../services/api.js";
 
 import { MY_MATCHES, AVAILABLE_MATCHES } from "../data/partidos";
 
@@ -34,6 +32,8 @@ export default function Home() {
     handleConfirmLeave,
   } = useMisPartidos();
 
+  const [canchas, setCanchas] = useState([]);
+
   useEffect(() => {
     const user = localStorage.getItem("user");
 
@@ -41,6 +41,20 @@ export default function Home() {
       navigate("/login");
     }
   }, [navigate]);
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      return;
+    }
+
+    getCanchas(token)
+      .then(setCanchas)
+      .catch((error) => {
+        console.error("Error al cargar canchas destacadas:", error);
+      });
+  }, []);
 
   const user = JSON.parse(localStorage.getItem("user"));
   const username =
@@ -55,7 +69,7 @@ export default function Home() {
     [version]
   );
 
-  const featuredFields = CANCHAS_MOCK.slice(0, 3).map(
+  const featuredFields = canchas.slice(0, 3).map(
     (cancha) => ({
       id: cancha.id,
       name: cancha.nombre,

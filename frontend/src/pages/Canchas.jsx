@@ -1,9 +1,12 @@
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import Header from "../components/Header";
 import BottomNavbar from "../components/BottomNavbar";
 import CanchaCard from "../components/CanchaCard";
-import { CANCHAS_MOCK } from "../data/canchas";
+
+import { getCanchas } from "../services/api.js";
+import { obtenerHorariosMock } from "../data/horariosMock";
 import { getAuthUser } from "../utils/authUser";
 
 
@@ -11,13 +14,54 @@ export default function Canchas() {
   const navigate = useNavigate();
 
   const {
-    esAdmin,
-    ownerAprobado,
     ownerPendiente,
     ownerRechazado,
     puedeGestionarCanchas,
-    emailUsuario,
   } = getAuthUser();
+
+  const [canchas, setCanchas] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      navigate("/login", { replace: true });
+      return;
+    }
+
+    const cargarCanchas = async () => {
+      try {
+        setCargando(true);
+        setError("");
+
+        const data = await getCanchas(token);
+
+        setCanchas(
+          data.map((cancha) => ({
+            ...cancha,
+            horarios: obtenerHorariosMock(cancha.id),
+          }))
+        );
+      } catch (err) {
+        console.error("Error al cargar canchas:", err);
+
+        if (err.status === 401) {
+          localStorage.removeItem("token");
+          localStorage.removeItem("user");
+          navigate("/login", { replace: true });
+          return;
+        }
+
+        setError("No se pudieron cargar las canchas.");
+      } finally {
+        setCargando(false);
+      }
+    };
+
+    cargarCanchas();
+  }, [navigate]);
 
 
   return (
@@ -65,31 +109,37 @@ export default function Canchas() {
         )}
 
 
-        <section className="mt-8 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {CANCHAS_MOCK.map((cancha) => {
-            const emailDueno =
-              cancha.ownerEmail?.trim().toLowerCase();
+        {error && (
+          <div className="mt-6 rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-800 dark:border-red-700 dark:bg-red-950/30 dark:text-red-300">
+            {error}
+          </div>
+        )}
 
-            const esPropietario =
-              esAdmin ||
-              (
-                ownerAprobado &&
-                emailUsuario &&
-                emailDueno === emailUsuario
-              );
 
-            return (
+        {cargando ? (
+          <p className="mt-8 text-sm text-slate-500 dark:text-slate-400">
+            Cargando canchas...
+          </p>
+        ) : canchas.length === 0 ? (
+          <div className="mt-8 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center dark:border-slate-800 dark:bg-slate-900/40">
+            <p className="text-sm text-slate-900 dark:text-white">
+              Todavía no hay canchas cargadas.
+            </p>
+          </div>
+        ) : (
+          <section className="mt-8 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {canchas.map((cancha) => (
               <CanchaCard
                 key={cancha.id}
                 cancha={cancha}
-                esPropietario={esPropietario}
+                esPropietario={cancha.puede_editar}
                 onDetalles={() =>
                   navigate(`/canchas/${cancha.id}/editar`)
                 }
               />
-            );
-          })}
-        </section>
+            ))}
+          </section>
+        )}
       </main>
 
       <BottomNavbar />

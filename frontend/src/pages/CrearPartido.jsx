@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
@@ -19,10 +19,13 @@ import CanchaSelector from "../components/CanchaSelector";
 import HorarioSelector from "../components/HorarioSelector";
 import RatingBadge from "../components/RatingBadge";
 
+import { formatPrecio } from "../utils/format";
+import { getCanchas } from "../services/api.js";
+
 import {
-  CANCHAS_MOCK,
-  formatPrecio,
-} from "../data/canchas";
+  obtenerHorariosMock,
+  quitarHorarioMock,
+} from "../data/horariosMock";
 
 import {
   MY_MATCHES,
@@ -33,9 +36,8 @@ import {
 export default function CrearPartido() {
   const navigate = useNavigate();
 
-  const [canchaId, setCanchaId] = useState(
-    CANCHAS_MOCK.length > 0 ? CANCHAS_MOCK[0].id : null
-  );
+  const [canchas, setCanchas] = useState([]);
+  const [canchaId, setCanchaId] = useState(null);
 
   const [form, setForm] = useState({
     nombre: "",
@@ -50,10 +52,46 @@ export default function CrearPartido() {
   const [errores, setErrores] = useState({});
   const [mensaje, setMensaje] = useState("");
 
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      navigate("/login", { replace: true });
+      return;
+    }
+
+    const cargarCanchas = async () => {
+      try {
+        const data = await getCanchas(token);
+
+        const canchasConHorarios = data.map((c) => ({
+          ...c,
+          horarios: obtenerHorariosMock(c.id),
+        }));
+
+        setCanchas(canchasConHorarios);
+
+        if (canchasConHorarios.length > 0) {
+          setCanchaId(canchasConHorarios[0].id);
+        }
+      } catch (error) {
+        console.error("Error al cargar canchas:", error);
+
+        if (error.status === 401) {
+          localStorage.removeItem("token");
+          localStorage.removeItem("user");
+          navigate("/login", { replace: true });
+        }
+      }
+    };
+
+    cargarCanchas();
+  }, [navigate]);
+
   const cancha = useMemo(
     () =>
-      CANCHAS_MOCK.find((c) => c.id === canchaId) || null,
-    [canchaId]
+      canchas.find((c) => c.id === canchaId) || null,
+    [canchas, canchaId]
   );
 
   const getModalidad = (canchaSeleccionada) => {
@@ -288,26 +326,11 @@ export default function CrearPartido() {
       playersList: [...nuevoPartido.playersList],
     });
 
-    const indiceCancha = CANCHAS_MOCK.findIndex(
-      (item) => item.id === cancha.id
+    quitarHorarioMock(
+      cancha.id,
+      horarioSeleccionado.dia,
+      horarioSeleccionado.hora
     );
-
-    if (indiceCancha !== -1) {
-      const horariosDelDia =
-        CANCHAS_MOCK[indiceCancha].horarios?.[
-          horarioSeleccionado.dia
-        ] || [];
-
-      CANCHAS_MOCK[indiceCancha] = {
-        ...CANCHAS_MOCK[indiceCancha],
-        horarios: {
-          ...CANCHAS_MOCK[indiceCancha].horarios,
-          [horarioSeleccionado.dia]: horariosDelDia.filter(
-            (hora) => hora !== horarioSeleccionado.hora
-          ),
-        },
-      };
-    }
 
     setMensaje("¡Partido creado correctamente!");
 
@@ -348,7 +371,7 @@ export default function CrearPartido() {
           </p>
 
           <CanchaSelector
-            canchas={CANCHAS_MOCK}
+            canchas={canchas}
             canchaId={canchaId}
             onSelect={seleccionarCancha}
           />

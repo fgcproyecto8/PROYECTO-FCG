@@ -1,5 +1,5 @@
 import { Check, MapPin } from "lucide-react";
-import { formatPrecio } from "../data/canchas";
+import { formatPrecio } from "../utils/format";
 import RatingBadge from "./RatingBadge";
 
 export default function CanchaSelector({

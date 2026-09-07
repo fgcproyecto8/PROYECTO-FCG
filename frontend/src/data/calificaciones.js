@@ -1,4 +1,9 @@
-const STORAGE_KEY = "calificaciones_canchas";
+// "_v2": las canchas antes eran mock con ids fijos (1, 2). Ahora los
+// ids vienen del backend real y arrancan tambien desde 1, así que la
+// clave vieja podía "heredar" calificaciones guardadas para la cancha
+// mock de antes en cualquier navegador que ya la hubiese usado. Un
+// namespace nuevo evita esa colision de una vez.
+const STORAGE_KEY = "calificaciones_canchas_v2";
 
 function normalizarEmail(email) {
   return email?.trim().toLowerCase() || "";
