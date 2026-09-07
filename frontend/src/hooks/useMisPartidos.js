@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { CANCHAS_MOCK } from "../data/canchas";
+import { agregarHorarioMock } from "../data/horariosMock";
 import {
   MY_MATCHES,
   AVAILABLE_MATCHES,
@@ -25,12 +25,6 @@ export function useMisPartidos() {
   const liberarHorario = (partido) => {
     if (!partido.canchaId) return;
 
-    const cancha = CANCHAS_MOCK.find(
-      (item) => item.id === partido.canchaId
-    );
-
-    if (!cancha) return;
-
     let dia = partido.dayKey;
 
     if (!dia) {
@@ -38,13 +32,9 @@ export function useMisPartidos() {
       if (partido.date === "Mañana") dia = "manana";
     }
 
-    if (!dia || !cancha.horarios?.[dia]) return;
+    if (!dia) return;
 
-    if (!cancha.horarios[dia].includes(partido.time)) {
-      cancha.horarios[dia].push(partido.time);
-
-      cancha.horarios[dia].sort((a, b) => a.localeCompare(b));
-    }
+    agregarHorarioMock(partido.canchaId, dia, partido.time);
   };
 
   const agregarAMisPartidos = (match) => {

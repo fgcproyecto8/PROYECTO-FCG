@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.utils import timezone
 
-from .models import Perfil, SolicitudDueno
+from .models import Cancha, Perfil, SolicitudDueno
 
 
 @admin.register(Perfil)
@@ -78,3 +78,25 @@ class SolicitudDuenoAdmin(admin.ModelAdmin):
             request,
             f"{cantidad} solicitud(es) rechazada(s)."
         )
+
+
+@admin.register(Cancha)
+class CanchaAdmin(admin.ModelAdmin):
+    list_display = (
+        "nombre",
+        "tipo",
+        "dueno",
+        "precio",
+        "direccion",
+    )
+
+    list_filter = (
+        "tipo",
+    )
+
+    search_fields = (
+        "nombre",
+        "direccion",
+        "dueno__username",
+        "dueno__email",
+    )

@@ -15,6 +15,8 @@ from .views import (
     rechazar_solicitud_amistad,
     amigos,
     eliminar_amigo,
+    canchas,
+    cancha_detalle,
 )
 
 
@@ -68,5 +70,15 @@ urlpatterns = [
     path(
         "amistades/<int:usuario_id>/",
         eliminar_amigo
+    ),
+
+    path(
+        "canchas/",
+        canchas
+    ),
+
+    path(
+        "canchas/<int:cancha_id>/",
+        cancha_detalle
     ),
 ]

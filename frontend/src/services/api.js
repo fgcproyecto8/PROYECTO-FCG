@@ -255,3 +255,67 @@ export function eliminarAmigo(
     }
   );
 }
+
+
+// CANCHAS
+
+export function getCanchas(token) {
+  return request("/canchas/", {
+    method: "GET",
+    headers: {
+      Authorization: `Token ${token}`,
+    },
+  });
+}
+
+
+export function getCanchaDetalle(token, canchaId) {
+  return request(`/canchas/${canchaId}/`, {
+    method: "GET",
+    headers: {
+      Authorization: `Token ${token}`,
+    },
+  });
+}
+
+
+export function crearCancha(token, datos) {
+  const body =
+    datos instanceof FormData
+      ? datos
+      : JSON.stringify(datos);
+
+  return request("/canchas/", {
+    method: "POST",
+    headers: {
+      Authorization: `Token ${token}`,
+    },
+    body,
+  });
+}
+
+
+export function actualizarCancha(token, canchaId, datos) {
+  const body =
+    datos instanceof FormData
+      ? datos
+      : JSON.stringify(datos);
+
+  return request(`/canchas/${canchaId}/`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Token ${token}`,
+    },
+    body,
+  });
+}
+
+
+export function eliminarCancha(token, canchaId) {
+  return request(`/canchas/${canchaId}/`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Token ${token}`,
+    },
+  });
+}

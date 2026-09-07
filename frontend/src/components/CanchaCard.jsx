@@ -1,5 +1,5 @@
 import { MapPin, Phone, DollarSign } from "lucide-react";
-import { formatPrecio } from "../data/canchas";
+import { formatPrecio } from "../utils/format";
 
 function TurnoChips({ titulo, horarios }) {
   return (

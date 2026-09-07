@@ -8,9 +8,11 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from .models import (
+    Cancha,
     Perfil,
     SolicitudDueno,
     SolicitudAmistad,
+    usuario_puede_editar_cancha,
 )
 
 
@@ -328,6 +330,48 @@ class UsuarioPublicoSerializer(serializers.ModelSerializer):
             "cantidad_calificaciones",
             "mi_calificacion",
             "estado_amistad",
+        )
+
+
+class CanchaSerializer(serializers.ModelSerializer):
+
+    puede_editar = serializers.SerializerMethodField()
+
+    def get_puede_editar(self, cancha):
+        request = self.context.get("request")
+
+        if not request or not request.user.is_authenticated:
+            return False
+
+        return usuario_puede_editar_cancha(request.user, cancha)
+
+    def validate_precio(self, value):
+        if value <= 0:
+            raise serializers.ValidationError(
+                "El precio debe ser mayor a cero."
+            )
+
+        return value
+
+    class Meta:
+        model = Cancha
+
+        fields = (
+            "id",
+            "nombre",
+            "tipo",
+            "direccion",
+            "telefono",
+            "precio",
+            "imagen",
+            "puede_editar",
+            "fecha_creacion",
+        )
+
+        read_only_fields = (
+            "id",
+            "puede_editar",
+            "fecha_creacion",
         )
 
 

@@ -1,6 +1,5 @@
 import {
   useEffect,
-  useMemo,
   useState,
 } from "react";
 
@@ -15,15 +14,16 @@ import {
   DollarSign,
   CalendarDays,
   Star,
+  Trash2,
 } from "lucide-react";
 
 import ImageUploader from "../components/ImageUploader";
 import HorarioChips from "../components/HorarioChips";
 
 import {
-  CANCHAS_MOCK,
-  canchaVacia,
-} from "../data/canchas";
+  obtenerHorariosMock,
+  guardarHorariosMock,
+} from "../data/horariosMock";
 
 import {
   guardarCalificacion,
@@ -33,95 +33,58 @@ import {
 
 import { getAuthUser } from "../utils/authUser";
 
+import {
+  getCanchaDetalle,
+  crearCancha,
+  actualizarCancha,
+  eliminarCancha,
+} from "../services/api.js";
+
+
+const CANCHA_VACIA = {
+  nombre: "",
+  tipo: "FÚTBOL 5",
+  direccion: "",
+  telefono: "",
+  precio: "",
+  imagen: "",
+};
+
 
 export default function CanchaForm() {
   const { id } = useParams();
   const navigate = useNavigate();
 
   const {
-    usuario,
     esAdmin,
     esJugador,
-    ownerAprobado,
-    puedeGestionarCanchas: puedeGestionar,
     emailUsuario,
+    puedeGestionarCanchas: puedeGestionar,
   } = getAuthUser();
 
   const esNueva = !id;
 
 
-  const inicial = useMemo(() => {
-    if (!id) {
-      return canchaVacia();
-    }
+  const [form, setForm] = useState(CANCHA_VACIA);
 
-    const encontrada =
-      CANCHAS_MOCK.find(
-        (cancha) =>
-          String(cancha.id) ===
-          String(id)
-      );
+  const [horarios, setHorarios] = useState({
+    hoy: [],
+    manana: [],
+  });
 
-    if (!encontrada) {
-      return canchaVacia();
-    }
-
-    return {
-      ...encontrada,
-      horarios: {
-        hoy: [
-          ...encontrada.horarios.hoy,
-        ],
-        manana: [
-          ...encontrada.horarios.manana,
-        ],
-      },
-    };
-  }, [id]);
-
-
-  const [form, setForm] =
-    useState(inicial);
+  const [imagenArchivo, setImagenArchivo] = useState(null);
+  const [esPropietario, setEsPropietario] = useState(false);
+  const [cargando, setCargando] = useState(!esNueva);
+  const [error, setError] = useState("");
+  const [guardando, setGuardando] = useState(false);
 
 
   const [
     calificacionUsuario,
     setCalificacionUsuario,
-  ] = useState(() => {
-    if (!id || !emailUsuario) {
-      return 0;
-    }
+  ] = useState(0);
 
-    return obtenerCalificacionUsuario(
-      id,
-      emailUsuario
-    );
-  });
-
-
-  const [
-    promedio,
-    setPromedio,
-  ] = useState(() => {
-    if (!id) {
-      return null;
-    }
-
-    return obtenerPromedioCancha(id);
-  });
-
-
-  const emailDueno =
-    form.ownerEmail
-      ?.trim()
-      .toLowerCase();
-
-
-  const esPropietario =
-    !esNueva &&
-    ownerAprobado &&
-    emailUsuario &&
-    emailDueno === emailUsuario;
+  const [promedio, setPromedio] = useState(null);
 
 
   const puedeEditar = esNueva
@@ -130,19 +93,95 @@ export default function CanchaForm() {
 
 
   useEffect(() => {
-    if (
-      esNueva &&
-      !puedeGestionar
-    ) {
-      navigate("/canchas", {
+    if (esNueva) {
+      if (!puedeGestionar) {
+        navigate("/canchas", {
+          replace: true,
+        });
+      }
+
+      return;
+    }
+
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      navigate("/login", {
         replace: true,
       });
+
+      return;
     }
-  }, [
-    esNueva,
-    puedeGestionar,
-    navigate,
-  ]);
+
+    let activo = true;
+
+    const cargarCancha = async () => {
+      try {
+        setCargando(true);
+        setError("");
+
+        const data = await getCanchaDetalle(token, id);
+
+        if (!activo) return;
+
+        setForm({
+          nombre: data.nombre,
+          tipo: data.tipo,
+          direccion: data.direccion,
+          telefono: data.telefono,
+          precio: data.precio,
+          imagen: data.imagen || "",
+        });
+
+        setHorarios(obtenerHorariosMock(id));
+        setEsPropietario(Boolean(data.puede_editar));
+
+        setCalificacionUsuario(
+          emailUsuario
+            ? obtenerCalificacionUsuario(id, emailUsuario)
+            : 0
+        );
+
+        setPromedio(obtenerPromedioCancha(id));
+      } catch (err) {
+        if (!activo) return;
+
+        console.error("Error al cargar la cancha:", err);
+
+        if (err.status === 401) {
+          localStorage.removeItem("token");
+          localStorage.removeItem("user");
+
+          navigate("/login", {
+            replace: true,
+          });
+
+          return;
+        }
+
+        if (err.status === 404) {
+          navigate("/canchas", {
+            replace: true,
+          });
+
+          return;
+        }
+
+        setError("No se pudo cargar la cancha.");
+      } finally {
+        if (activo) {
+          setCargando(false);
+        }
+      }
+    };
+
+    cargarCancha();
+
+    return () => {
+      activo = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [esNueva, id]);
 
 
   const setCampo =
@@ -164,9 +203,9 @@ export default function CanchaForm() {
         return;
       }
 
-      setForm((prev) => {
+      setHorarios((prev) => {
         const actuales =
-          prev.horarios[dia];
+          prev[dia];
 
         const nuevos =
           actuales.includes(hora)
@@ -182,10 +221,7 @@ export default function CanchaForm() {
 
         return {
           ...prev,
-          horarios: {
-            ...prev.horarios,
-            [dia]: nuevos,
-          },
+          [dia]: nuevos,
         };
       });
     };
@@ -201,9 +237,9 @@ export default function CanchaForm() {
         return;
       }
 
-      setForm((prev) => {
+      setHorarios((prev) => {
         const actuales =
-          prev.horarios[dia];
+          prev[dia];
 
         if (
           actuales.includes(hora)
@@ -220,19 +256,18 @@ export default function CanchaForm() {
 
         return {
           ...prev,
-          horarios: {
-            ...prev.horarios,
-            [dia]: nuevos,
-          },
+          [dia]: nuevos,
         };
       });
     };
 
 
-  const handleImagen = (url) => {
+  const handleImagen = (archivo, url) => {
     if (!puedeEditar) {
       return;
     }
+
+    setImagenArchivo(archivo);
 
     setForm((prev) => ({
       ...prev,
@@ -266,47 +301,131 @@ export default function CanchaForm() {
   };
 
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (!puedeEditar) {
       return;
     }
 
-    if (esNueva) {
-      const nuevaCancha = {
-        ...form,
-        id: Date.now(),
+    const token = localStorage.getItem("token");
 
-        ownerEmail:
-          usuario.email,
-      };
+    if (!token) {
+      navigate("/login", {
+        replace: true,
+      });
 
-      CANCHAS_MOCK.push(
-        nuevaCancha
-      );
-    } else {
-      const indice =
-        CANCHAS_MOCK.findIndex(
-          (cancha) =>
-            String(cancha.id) ===
-            String(id)
-        );
-
-      if (indice !== -1) {
-        CANCHAS_MOCK[indice] = {
-          ...form,
-
-          ownerEmail:
-            CANCHAS_MOCK[
-              indice
-            ].ownerEmail,
-        };
-      }
+      return;
     }
 
-    navigate("/canchas");
+    const datos = new FormData();
+
+    datos.append("nombre", form.nombre.trim());
+    datos.append("tipo", form.tipo);
+    datos.append("direccion", form.direccion.trim());
+    datos.append("telefono", form.telefono.trim());
+    datos.append("precio", form.precio);
+
+    if (imagenArchivo) {
+      datos.append("imagen", imagenArchivo);
+    }
+
+    try {
+      setGuardando(true);
+      setError("");
+
+      const canchaGuardada = esNueva
+        ? await crearCancha(token, datos)
+        : await actualizarCancha(token, id, datos);
+
+      guardarHorariosMock(canchaGuardada.id, horarios);
+
+      navigate("/canchas");
+    } catch (err) {
+      console.error("Error al guardar la cancha:", err);
+
+      if (err.status === 401) {
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+
+        navigate("/login", {
+          replace: true,
+        });
+
+        return;
+      }
+
+      setError(
+        err.message || "No se pudo guardar la cancha."
+      );
+
+      setGuardando(false);
+    }
   };
+
+
+  const handleEliminar = async () => {
+    if (esNueva || !puedeEditar) {
+      return;
+    }
+
+    if (
+      !window.confirm(
+        "¿Seguro que querés eliminar esta cancha? Esta acción no se puede deshacer."
+      )
+    ) {
+      return;
+    }
+
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      navigate("/login", {
+        replace: true,
+      });
+
+      return;
+    }
+
+    try {
+      setGuardando(true);
+      setError("");
+
+      await eliminarCancha(token, id);
+
+      navigate("/canchas");
+    } catch (err) {
+      console.error("Error al eliminar la cancha:", err);
+
+      if (err.status === 401) {
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+
+        navigate("/login", {
+          replace: true,
+        });
+
+        return;
+      }
+
+      setError(
+        err.message || "No se pudo eliminar la cancha."
+      );
+
+      setGuardando(false);
+    }
+  };
+
+
+  if (cargando) {
+    return (
+      <div className="min-h-screen bg-white px-4 pb-28 pt-6 text-slate-900 dark:bg-slate-950 dark:text-white">
+        <p className="mx-auto w-full max-w-xl text-center text-sm text-slate-500 dark:text-slate-400">
+          Cargando cancha...
+        </p>
+      </div>
+    );
+  }
 
 
   return (
@@ -330,6 +449,12 @@ export default function CanchaForm() {
               : "Modifica los detalles y horarios de tu cancha."
             : "Podés consultar la información de esta cancha."}
         </p>
+
+        {error && (
+          <p className="mb-4 rounded-lg border border-red-300 bg-red-50 p-3 text-xs text-red-800 dark:border-red-700 dark:bg-red-950/30 dark:text-red-300">
+            {error}
+          </p>
+        )}
 
 
         {puedeEditar ? (
@@ -434,7 +559,7 @@ export default function CanchaForm() {
         <HorarioChips
           titulo="HOY"
           seleccionados={
-            form.horarios.hoy
+            horarios.hoy
           }
           onToggle={toggleHorario(
             "hoy"
@@ -450,7 +575,7 @@ export default function CanchaForm() {
         <HorarioChips
           titulo="MAÑANA"
           seleccionados={
-            form.horarios.manana
+            horarios.manana
           }
           onToggle={toggleHorario(
             "manana"
@@ -522,11 +647,14 @@ export default function CanchaForm() {
         {puedeEditar && (
           <button
             type="submit"
-            className="mt-6 w-full rounded-lg bg-emerald-500 py-3 text-sm font-bold text-white transition hover:bg-emerald-600"
+            disabled={guardando}
+            className="mt-6 w-full rounded-lg bg-emerald-500 py-3 text-sm font-bold text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {esNueva
-              ? "Agregar Cancha"
-              : "Confirmar Cambios"}
+            {guardando
+              ? "Guardando..."
+              : esNueva
+                ? "Agregar Cancha"
+                : "Confirmar Cambios"}
           </button>
         )}
 
@@ -542,6 +670,19 @@ export default function CanchaForm() {
             ? "Cancelar"
             : "Volver"}
         </button>
+
+
+        {!esNueva && puedeEditar && (
+          <button
+            type="button"
+            onClick={handleEliminar}
+            disabled={guardando}
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-red-500/60 bg-transparent py-3 text-sm font-semibold text-red-500 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-60 dark:text-red-400"
+          >
+            <Trash2 size={16} />
+            Eliminar cancha
+          </button>
+        )}
       </form>
     </div>
   );

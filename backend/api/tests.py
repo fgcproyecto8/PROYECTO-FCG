@@ -4,7 +4,13 @@ from django.test import TestCase
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
-from .models import CalificacionUsuario, Perfil, SolicitudAmistad
+from .models import (
+    Cancha,
+    CalificacionUsuario,
+    Perfil,
+    SolicitudAmistad,
+    SolicitudDueno,
+)
 
 
 def crear_jugador(username, posicion=""):
@@ -18,6 +24,29 @@ def crear_jugador(username, posicion=""):
         usuario=usuario,
         rol=Perfil.Rol.JUGADOR,
         posicion=posicion,
+    )
+
+    return usuario
+
+
+def crear_dueno(username, estado):
+    usuario = User.objects.create_user(
+        username=username,
+        email=f"{username}@example.com",
+        password="clave-segura-123",
+    )
+
+    Perfil.objects.create(
+        usuario=usuario,
+        rol=Perfil.Rol.DUENO_CANCHA,
+    )
+
+    SolicitudDueno.objects.create(
+        usuario=usuario,
+        nombre_cancha=f"Cancha de {username}",
+        direccion="Direccion de prueba",
+        telefono="1234567",
+        estado=estado,
     )
 
     return usuario
@@ -263,3 +292,245 @@ class AutenticacionTests(TestCase):
             respuesta_me.data["solicitud_dueno"]["puede_gestionar_canchas"],
             False,
         )
+
+
+class CanchaTests(TestCase):
+    """CRUD y permisos de Cancha: jugador y dueño no aprobado solo
+    pueden ver; dueño aprobado administra unicamente las suyas;
+    administrador administra todas."""
+
+    def setUp(self):
+        self.client = APIClient()
+
+        self.jugador = crear_jugador("jugador_canchas")
+
+        self.dueno = crear_dueno(
+            "dueno_aprobado", SolicitudDueno.Estado.APROBADA
+        )
+
+        self.dueno_pendiente = crear_dueno(
+            "dueno_pendiente_canchas", SolicitudDueno.Estado.PENDIENTE
+        )
+
+        self.dueno_rechazado = crear_dueno(
+            "dueno_rechazado_canchas", SolicitudDueno.Estado.RECHAZADA
+        )
+
+        self.otro_dueno_aprobado = crear_dueno(
+            "otro_dueno_aprobado", SolicitudDueno.Estado.APROBADA
+        )
+
+        self.admin = User.objects.create_superuser(
+            username="admin_canchas",
+            email="admin_canchas@example.com",
+            password="clave-segura-123",
+        )
+
+        self.cancha = Cancha.objects.create(
+            dueno=self.dueno,
+            nombre="Cancha El Templo",
+            tipo=Cancha.Tipo.FUTBOL_5,
+            direccion="Calle 1",
+            telefono="111111",
+            precio=10000,
+        )
+
+    def _datos_cancha(self, **extra):
+        datos = {
+            "nombre": "Cancha Nueva",
+            "direccion": "Av. Siempre Viva 742",
+            "telefono": "222222",
+            "precio": 20000,
+        }
+
+        datos.update(extra)
+
+        return datos
+
+    # --- Lectura: cualquier rol autenticado puede ver ---
+
+    def test_listar_canchas_requiere_token(self):
+        respuesta = self.client.get("/api/canchas/")
+        self.assertEqual(respuesta.status_code, 401)
+
+    def test_jugador_puede_listar_canchas(self):
+        self.client.force_authenticate(user=self.jugador)
+
+        respuesta = self.client.get("/api/canchas/")
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(len(respuesta.data), 1)
+        self.assertEqual(respuesta.data[0]["nombre"], "Cancha El Templo")
+        self.assertFalse(respuesta.data[0]["puede_editar"])
+
+    def test_dueno_pendiente_puede_listar_pero_no_editar(self):
+        self.client.force_authenticate(user=self.dueno_pendiente)
+
+        respuesta = self.client.get("/api/canchas/")
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertFalse(respuesta.data[0]["puede_editar"])
+
+    def test_obtener_detalle_cancha(self):
+        self.client.force_authenticate(user=self.jugador)
+
+        respuesta = self.client.get(f"/api/canchas/{self.cancha.id}/")
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.data["nombre"], "Cancha El Templo")
+
+    def test_detalle_cancha_inexistente_devuelve_404(self):
+        self.client.force_authenticate(user=self.jugador)
+
+        respuesta = self.client.get("/api/canchas/99999/")
+
+        self.assertEqual(respuesta.status_code, 404)
+
+    # --- Creación: solo dueño aprobado o admin ---
+
+    def test_jugador_no_puede_crear_cancha(self):
+        self.client.force_authenticate(user=self.jugador)
+
+        respuesta = self.client.post(
+            "/api/canchas/", self._datos_cancha()
+        )
+
+        self.assertEqual(respuesta.status_code, 403)
+        self.assertEqual(Cancha.objects.count(), 1)
+
+    def test_dueno_pendiente_no_puede_crear_cancha(self):
+        self.client.force_authenticate(user=self.dueno_pendiente)
+
+        respuesta = self.client.post(
+            "/api/canchas/", self._datos_cancha()
+        )
+
+        self.assertEqual(respuesta.status_code, 403)
+
+    def test_dueno_rechazado_no_puede_crear_cancha(self):
+        self.client.force_authenticate(user=self.dueno_rechazado)
+
+        respuesta = self.client.post(
+            "/api/canchas/", self._datos_cancha()
+        )
+
+        self.assertEqual(respuesta.status_code, 403)
+
+    def test_dueno_aprobado_puede_crear_cancha(self):
+        self.client.force_authenticate(user=self.dueno)
+
+        respuesta = self.client.post(
+            "/api/canchas/", self._datos_cancha()
+        )
+
+        self.assertEqual(respuesta.status_code, 201)
+        self.assertEqual(respuesta.data["nombre"], "Cancha Nueva")
+        self.assertTrue(respuesta.data["puede_editar"])
+
+        creada = Cancha.objects.get(nombre="Cancha Nueva")
+        self.assertEqual(creada.dueno_id, self.dueno.id)
+
+    def test_admin_puede_crear_cancha(self):
+        self.client.force_authenticate(user=self.admin)
+
+        respuesta = self.client.post(
+            "/api/canchas/", self._datos_cancha()
+        )
+
+        self.assertEqual(respuesta.status_code, 201)
+
+    def test_precio_invalido_rechaza_creacion(self):
+        self.client.force_authenticate(user=self.dueno)
+
+        respuesta = self.client.post(
+            "/api/canchas/", self._datos_cancha(precio=0)
+        )
+
+        self.assertEqual(respuesta.status_code, 400)
+
+    # --- Edición: solo el dueño de esa cancha (aprobado) o admin ---
+
+    def test_dueno_puede_editar_su_propia_cancha(self):
+        self.client.force_authenticate(user=self.dueno)
+
+        respuesta = self.client.patch(
+            f"/api/canchas/{self.cancha.id}/",
+            {"nombre": "Cancha Actualizada"},
+            format="json",
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+
+        self.cancha.refresh_from_db()
+        self.assertEqual(self.cancha.nombre, "Cancha Actualizada")
+
+    def test_dueno_no_puede_editar_cancha_ajena(self):
+        self.client.force_authenticate(user=self.otro_dueno_aprobado)
+
+        respuesta = self.client.patch(
+            f"/api/canchas/{self.cancha.id}/",
+            {"nombre": "Hackeada"},
+            format="json",
+        )
+
+        self.assertEqual(respuesta.status_code, 403)
+
+        self.cancha.refresh_from_db()
+        self.assertEqual(self.cancha.nombre, "Cancha El Templo")
+
+    def test_jugador_no_puede_editar_cancha(self):
+        self.client.force_authenticate(user=self.jugador)
+
+        respuesta = self.client.patch(
+            f"/api/canchas/{self.cancha.id}/",
+            {"nombre": "Hackeada"},
+            format="json",
+        )
+
+        self.assertEqual(respuesta.status_code, 403)
+
+    def test_admin_puede_editar_cualquier_cancha(self):
+        self.client.force_authenticate(user=self.admin)
+
+        respuesta = self.client.patch(
+            f"/api/canchas/{self.cancha.id}/",
+            {"nombre": "Editada por admin"},
+            format="json",
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+
+    # --- Eliminación: mismas reglas que edición ---
+
+    def test_jugador_no_puede_eliminar_cancha(self):
+        self.client.force_authenticate(user=self.jugador)
+
+        respuesta = self.client.delete(f"/api/canchas/{self.cancha.id}/")
+
+        self.assertEqual(respuesta.status_code, 403)
+        self.assertTrue(Cancha.objects.filter(id=self.cancha.id).exists())
+
+    def test_dueno_no_puede_eliminar_cancha_ajena(self):
+        self.client.force_authenticate(user=self.otro_dueno_aprobado)
+
+        respuesta = self.client.delete(f"/api/canchas/{self.cancha.id}/")
+
+        self.assertEqual(respuesta.status_code, 403)
+        self.assertTrue(Cancha.objects.filter(id=self.cancha.id).exists())
+
+    def test_dueno_puede_eliminar_su_propia_cancha(self):
+        self.client.force_authenticate(user=self.dueno)
+
+        respuesta = self.client.delete(f"/api/canchas/{self.cancha.id}/")
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertFalse(
+            Cancha.objects.filter(id=self.cancha.id).exists()
+        )
+
+    def test_admin_puede_eliminar_cualquier_cancha(self):
+        self.client.force_authenticate(user=self.admin)
+
+        respuesta = self.client.delete(f"/api/canchas/{self.cancha.id}/")
+
+        self.assertEqual(respuesta.status_code, 200)
