@@ -7,6 +7,9 @@ from rest_framework.test import APIClient
 from .models import (
     Cancha,
     CalificacionUsuario,
+    InvitacionPartido,
+    ParticipacionPartido,
+    Partido,
     Perfil,
     SolicitudAmistad,
     SolicitudDueno,
@@ -534,3 +537,552 @@ class CanchaTests(TestCase):
         respuesta = self.client.delete(f"/api/canchas/{self.cancha.id}/")
 
         self.assertEqual(respuesta.status_code, 200)
+
+
+class PartidoTests(TestCase):
+    """CRUD, cupos, privacidad e invitaciones de Partido."""
+
+    def setUp(self):
+        self.client = APIClient()
+
+        self.creador = crear_jugador("creador_partido")
+        self.jugador2 = crear_jugador("jugador2_partido")
+        self.jugador3 = crear_jugador("jugador3_partido")
+        self.no_amigo = crear_jugador("no_amigo_partido")
+
+        self.dueno = crear_dueno(
+            "dueno_partidos", SolicitudDueno.Estado.APROBADA
+        )
+
+        self.cancha = Cancha.objects.create(
+            dueno=self.dueno,
+            nombre="Cancha Partidos Test",
+            tipo=Cancha.Tipo.FUTBOL_5,
+            direccion="Calle Test 1",
+            telefono="1111111",
+            precio=10000,
+        )
+
+        # El creador y jugador2 son amigos reales (aceptada).
+        SolicitudAmistad.objects.create(
+            remitente=self.creador,
+            destinatario=self.jugador2,
+            estado=SolicitudAmistad.Estado.ACEPTADA,
+        )
+
+    def _datos_partido(self, **extra):
+        datos = {
+            "cancha": self.cancha.id,
+            "nombre": "Partido de prueba",
+            "descripcion": "Descripcion de prueba",
+            "fecha": "2026-09-10",
+            "hora": "20:00",
+            "es_publico": True,
+        }
+
+        datos.update(extra)
+
+        return datos
+
+    # --- Crear partido ---
+
+    def test_crear_partido_requiere_token(self):
+        respuesta = self.client.post(
+            "/api/partidos/", self._datos_partido()
+        )
+
+        self.assertEqual(respuesta.status_code, 401)
+
+    def test_crear_partido_exitoso(self):
+        self.client.force_authenticate(user=self.creador)
+
+        respuesta = self.client.post(
+            "/api/partidos/", self._datos_partido()
+        )
+
+        self.assertEqual(respuesta.status_code, 201)
+        self.assertEqual(respuesta.data["nombre"], "Partido de prueba")
+        self.assertEqual(respuesta.data["cupo"], 10)
+        self.assertEqual(respuesta.data["cantidad_jugadores"], 1)
+        self.assertTrue(respuesta.data["estoy_unido"])
+        self.assertEqual(len(respuesta.data["jugadores"]), 1)
+        self.assertEqual(
+            respuesta.data["jugadores"][0]["username"],
+            "creador_partido",
+        )
+        self.assertNotIn("password", respuesta.data)
+
+        partido = Partido.objects.get(nombre="Partido de prueba")
+        self.assertEqual(partido.creador_id, self.creador.id)
+        self.assertTrue(
+            ParticipacionPartido.objects.filter(
+                partido=partido, usuario=self.creador
+            ).exists()
+        )
+
+    def test_crear_partido_privado_requiere_password(self):
+        self.client.force_authenticate(user=self.creador)
+
+        respuesta = self.client.post(
+            "/api/partidos/",
+            self._datos_partido(es_publico=False, password=""),
+        )
+
+        self.assertEqual(respuesta.status_code, 400)
+
+    def test_crear_partido_privado_hashea_password(self):
+        self.client.force_authenticate(user=self.creador)
+
+        respuesta = self.client.post(
+            "/api/partidos/",
+            self._datos_partido(
+                nombre="Partido Privado",
+                es_publico=False,
+                password="clave123",
+            ),
+        )
+
+        self.assertEqual(respuesta.status_code, 201)
+
+        partido = Partido.objects.get(nombre="Partido Privado")
+
+        self.assertNotEqual(partido.password, "clave123")
+        self.assertTrue(partido.password.startswith("pbkdf2_"))
+
+    def test_no_se_puede_repetir_nombre_de_partido(self):
+        self.client.force_authenticate(user=self.creador)
+
+        self.client.post("/api/partidos/", self._datos_partido())
+
+        respuesta = self.client.post(
+            "/api/partidos/",
+            self._datos_partido(hora="21:00"),
+        )
+
+        self.assertEqual(respuesta.status_code, 400)
+
+    def test_no_se_puede_ocupar_mismo_horario_de_cancha(self):
+        self.client.force_authenticate(user=self.creador)
+
+        self.client.post("/api/partidos/", self._datos_partido())
+
+        self.client.force_authenticate(user=self.jugador2)
+
+        respuesta = self.client.post(
+            "/api/partidos/",
+            self._datos_partido(nombre="Otro nombre distinto"),
+        )
+
+        self.assertEqual(respuesta.status_code, 400)
+
+        self.assertEqual(
+            Partido.objects.filter(
+                cancha=self.cancha,
+                fecha="2026-09-10",
+                hora="20:00",
+            ).count(),
+            1,
+        )
+
+    # --- Listar ---
+
+    def test_listar_partidos_requiere_token(self):
+        respuesta = self.client.get("/api/partidos/")
+        self.assertEqual(respuesta.status_code, 401)
+
+    def test_listar_partidos(self):
+        self.client.force_authenticate(user=self.creador)
+        self.client.post("/api/partidos/", self._datos_partido())
+
+        self.client.force_authenticate(user=self.jugador2)
+        respuesta = self.client.get("/api/partidos/")
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(len(respuesta.data), 1)
+        self.assertFalse(respuesta.data[0]["estoy_unido"])
+
+    # --- Unirse ---
+
+    def test_unirse_a_partido_publico(self):
+        self.client.force_authenticate(user=self.creador)
+
+        creado = self.client.post(
+            "/api/partidos/", self._datos_partido()
+        ).data
+
+        self.client.force_authenticate(user=self.jugador2)
+
+        respuesta = self.client.post(
+            f"/api/partidos/{creado['id']}/unirse/"
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.data["cantidad_jugadores"], 2)
+        self.assertTrue(respuesta.data["estoy_unido"])
+
+    def test_no_puede_unirse_dos_veces(self):
+        self.client.force_authenticate(user=self.creador)
+
+        creado = self.client.post(
+            "/api/partidos/", self._datos_partido()
+        ).data
+
+        respuesta = self.client.post(
+            f"/api/partidos/{creado['id']}/unirse/"
+        )
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertEqual(
+            ParticipacionPartido.objects.filter(
+                partido_id=creado["id"], usuario=self.creador
+            ).count(),
+            1,
+        )
+
+    def test_no_puede_unirse_si_esta_lleno(self):
+        self.client.force_authenticate(user=self.creador)
+
+        creado = self.client.post(
+            "/api/partidos/", self._datos_partido()
+        ).data
+
+        Partido.objects.filter(id=creado["id"]).update(cupo=1)
+
+        self.client.force_authenticate(user=self.jugador2)
+
+        respuesta = self.client.post(
+            f"/api/partidos/{creado['id']}/unirse/"
+        )
+
+        self.assertEqual(respuesta.status_code, 400)
+
+    def test_unirse_partido_privado_password_correcta(self):
+        self.client.force_authenticate(user=self.creador)
+
+        creado = self.client.post(
+            "/api/partidos/",
+            self._datos_partido(es_publico=False, password="clave123"),
+        ).data
+
+        self.client.force_authenticate(user=self.jugador2)
+
+        respuesta = self.client.post(
+            f"/api/partidos/{creado['id']}/unirse/",
+            {"password": "clave123"},
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+
+    def test_unirse_partido_privado_password_incorrecta(self):
+        self.client.force_authenticate(user=self.creador)
+
+        creado = self.client.post(
+            "/api/partidos/",
+            self._datos_partido(es_publico=False, password="clave123"),
+        ).data
+
+        self.client.force_authenticate(user=self.jugador2)
+
+        respuesta = self.client.post(
+            f"/api/partidos/{creado['id']}/unirse/",
+            {"password": "incorrecta"},
+        )
+
+        self.assertEqual(respuesta.status_code, 401)
+        self.assertFalse(
+            ParticipacionPartido.objects.filter(
+                partido_id=creado["id"], usuario=self.jugador2
+            ).exists()
+        )
+
+    # --- Abandonar ---
+
+    def test_abandonar_partido(self):
+        self.client.force_authenticate(user=self.creador)
+
+        creado = self.client.post(
+            "/api/partidos/", self._datos_partido()
+        ).data
+
+        self.client.force_authenticate(user=self.jugador2)
+        self.client.post(f"/api/partidos/{creado['id']}/unirse/")
+
+        respuesta = self.client.post(
+            f"/api/partidos/{creado['id']}/abandonar/"
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertTrue(
+            Partido.objects.filter(id=creado["id"]).exists()
+        )
+        self.assertEqual(
+            Partido.objects.get(
+                id=creado["id"]
+            ).participaciones.count(),
+            1,
+        )
+
+    def test_abandonar_ultimo_participante_elimina_partido_y_libera_horario(
+        self,
+    ):
+        self.client.force_authenticate(user=self.creador)
+
+        creado = self.client.post(
+            "/api/partidos/", self._datos_partido()
+        ).data
+
+        respuesta = self.client.post(
+            f"/api/partidos/{creado['id']}/abandonar/"
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertFalse(
+            Partido.objects.filter(id=creado["id"]).exists()
+        )
+
+        otra_respuesta = self.client.post(
+            "/api/partidos/",
+            self._datos_partido(nombre="Partido nuevo en el mismo horario"),
+        )
+
+        self.assertEqual(otra_respuesta.status_code, 201)
+
+    def test_no_puede_abandonar_partido_del_que_no_participa(self):
+        self.client.force_authenticate(user=self.creador)
+
+        creado = self.client.post(
+            "/api/partidos/", self._datos_partido()
+        ).data
+
+        self.client.force_authenticate(user=self.jugador2)
+
+        respuesta = self.client.post(
+            f"/api/partidos/{creado['id']}/abandonar/"
+        )
+
+        self.assertEqual(respuesta.status_code, 400)
+
+    # --- Invitaciones ---
+
+    def test_invitar_amigo_real(self):
+        self.client.force_authenticate(user=self.creador)
+
+        creado = self.client.post(
+            "/api/partidos/", self._datos_partido()
+        ).data
+
+        respuesta = self.client.post(
+            f"/api/partidos/{creado['id']}/invitar/",
+            {"destinatario_id": self.jugador2.id},
+        )
+
+        self.assertEqual(respuesta.status_code, 201)
+        self.assertTrue(
+            InvitacionPartido.objects.filter(
+                partido_id=creado["id"], destinatario=self.jugador2
+            ).exists()
+        )
+
+    def test_no_puede_invitar_a_no_amigo(self):
+        self.client.force_authenticate(user=self.creador)
+
+        creado = self.client.post(
+            "/api/partidos/", self._datos_partido()
+        ).data
+
+        respuesta = self.client.post(
+            f"/api/partidos/{creado['id']}/invitar/",
+            {"destinatario_id": self.no_amigo.id},
+        )
+
+        self.assertEqual(respuesta.status_code, 403)
+
+    def test_no_puede_invitarse_a_si_mismo(self):
+        self.client.force_authenticate(user=self.creador)
+
+        creado = self.client.post(
+            "/api/partidos/", self._datos_partido()
+        ).data
+
+        respuesta = self.client.post(
+            f"/api/partidos/{creado['id']}/invitar/",
+            {"destinatario_id": self.creador.id},
+        )
+
+        self.assertEqual(respuesta.status_code, 400)
+
+    def test_no_participante_no_puede_invitar(self):
+        self.client.force_authenticate(user=self.creador)
+
+        creado = self.client.post(
+            "/api/partidos/", self._datos_partido()
+        ).data
+
+        # jugador2 es amigo del creador pero no participa del partido.
+        self.client.force_authenticate(user=self.jugador2)
+
+        respuesta = self.client.post(
+            f"/api/partidos/{creado['id']}/invitar/",
+            {"destinatario_id": self.jugador3.id},
+        )
+
+        self.assertEqual(respuesta.status_code, 403)
+
+    def test_no_puede_invitar_si_ya_esta_en_el_partido(self):
+        self.client.force_authenticate(user=self.creador)
+
+        creado = self.client.post(
+            "/api/partidos/", self._datos_partido()
+        ).data
+
+        self.client.force_authenticate(user=self.jugador2)
+        self.client.post(f"/api/partidos/{creado['id']}/unirse/")
+
+        self.client.force_authenticate(user=self.creador)
+
+        respuesta = self.client.post(
+            f"/api/partidos/{creado['id']}/invitar/",
+            {"destinatario_id": self.jugador2.id},
+        )
+
+        self.assertEqual(respuesta.status_code, 400)
+
+    def test_no_puede_invitar_si_partido_lleno(self):
+        self.client.force_authenticate(user=self.creador)
+
+        creado = self.client.post(
+            "/api/partidos/", self._datos_partido()
+        ).data
+
+        Partido.objects.filter(id=creado["id"]).update(cupo=1)
+
+        respuesta = self.client.post(
+            f"/api/partidos/{creado['id']}/invitar/",
+            {"destinatario_id": self.jugador2.id},
+        )
+
+        self.assertEqual(respuesta.status_code, 400)
+
+    def test_aceptar_invitacion_une_al_partido(self):
+        self.client.force_authenticate(user=self.creador)
+
+        creado = self.client.post(
+            "/api/partidos/", self._datos_partido()
+        ).data
+
+        invitacion = self.client.post(
+            f"/api/partidos/{creado['id']}/invitar/",
+            {"destinatario_id": self.jugador2.id},
+        ).data
+
+        self.client.force_authenticate(user=self.jugador2)
+
+        respuesta_lista = self.client.get(
+            "/api/partidos/invitaciones/"
+        )
+
+        self.assertEqual(len(respuesta_lista.data), 1)
+        self.assertEqual(
+            respuesta_lista.data[0]["partido_nombre"],
+            "Partido de prueba",
+        )
+
+        respuesta = self.client.post(
+            f"/api/partidos/invitaciones/"
+            f"{invitacion['invitacion_id']}/aceptar/"
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertTrue(
+            ParticipacionPartido.objects.filter(
+                partido_id=creado["id"], usuario=self.jugador2
+            ).exists()
+        )
+
+        invitacion_actualizada = InvitacionPartido.objects.get(
+            id=invitacion["invitacion_id"]
+        )
+
+        self.assertEqual(
+            invitacion_actualizada.estado,
+            InvitacionPartido.Estado.ACEPTADA,
+        )
+
+    def test_no_supera_cupo_al_aceptar_invitacion(self):
+        self.client.force_authenticate(user=self.creador)
+
+        creado = self.client.post(
+            "/api/partidos/", self._datos_partido()
+        ).data
+
+        invitacion = self.client.post(
+            f"/api/partidos/{creado['id']}/invitar/",
+            {"destinatario_id": self.jugador2.id},
+        ).data
+
+        # El partido se llena por otra via antes de que acepte.
+        Partido.objects.filter(id=creado["id"]).update(cupo=1)
+
+        self.client.force_authenticate(user=self.jugador2)
+
+        respuesta = self.client.post(
+            f"/api/partidos/invitaciones/"
+            f"{invitacion['invitacion_id']}/aceptar/"
+        )
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertFalse(
+            ParticipacionPartido.objects.filter(
+                partido_id=creado["id"], usuario=self.jugador2
+            ).exists()
+        )
+
+    def test_rechazar_invitacion(self):
+        self.client.force_authenticate(user=self.creador)
+
+        creado = self.client.post(
+            "/api/partidos/", self._datos_partido()
+        ).data
+
+        invitacion = self.client.post(
+            f"/api/partidos/{creado['id']}/invitar/",
+            {"destinatario_id": self.jugador2.id},
+        ).data
+
+        self.client.force_authenticate(user=self.jugador2)
+
+        respuesta = self.client.post(
+            f"/api/partidos/invitaciones/"
+            f"{invitacion['invitacion_id']}/rechazar/"
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertFalse(
+            ParticipacionPartido.objects.filter(
+                partido_id=creado["id"], usuario=self.jugador2
+            ).exists()
+        )
+
+    def test_endpoints_de_partidos_requieren_token(self):
+        id_inexistente = 99999
+
+        endpoints = [
+            ("post", "/api/partidos/"),
+            ("post", f"/api/partidos/{id_inexistente}/unirse/"),
+            ("post", f"/api/partidos/{id_inexistente}/abandonar/"),
+            ("post", f"/api/partidos/{id_inexistente}/invitar/"),
+            ("get", "/api/partidos/invitaciones/"),
+            (
+                "post",
+                f"/api/partidos/invitaciones/{id_inexistente}/aceptar/",
+            ),
+            (
+                "post",
+                f"/api/partidos/invitaciones/{id_inexistente}/rechazar/",
+            ),
+        ]
+
+        for metodo, url in endpoints:
+            with self.subTest(metodo=metodo, url=url):
+                respuesta = getattr(self.client, metodo)(url)
+                self.assertEqual(respuesta.status_code, 401)

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { CalendarCheck, Plus } from "lucide-react";
 
@@ -12,11 +12,23 @@ import LeaveMatchModal from "../components/LeaveMatchModal";
 import MatchDetailsModal from "../components/MatchDetailsModal";
 import InviteFriendModal from "../components/InviteFriendModal";
 
-import { FRIENDS_MOCK } from "../data/friends";
+import { DEFAULT_AVATAR } from "../utils/avatar.js";
 
-import { MY_MATCHES, AVAILABLE_MATCHES, getCurrentPlayer } from "../data/partidos";
+import {
+  getAmigos,
+  invitarAPartido,
+} from "../services/api.js";
 
 import { useMisPartidos } from "../hooks/useMisPartidos.js";
+
+function adaptarAmigo(usuario) {
+  return {
+    id: usuario.id,
+    fullName: usuario.username,
+    username: usuario.username,
+    photo: usuario.foto || DEFAULT_AVATAR,
+  };
+}
 
 export default function Partidos() {
   const navigate = useNavigate();
@@ -24,7 +36,10 @@ export default function Partidos() {
   const [query, setQuery] = useState("");
 
   const {
-    version,
+    misPartidos,
+    partidosDisponibles,
+    cargando,
+    error,
     partidoPrivado,
     partidoAAbandonar,
     closePrivadoModal,
@@ -44,90 +59,78 @@ export default function Partidos() {
   const [invitacionesEnviadas, setInvitacionesEnviadas] =
     useState([]);
 
+  const [amigos, setAmigos] = useState([]);
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      return;
+    }
+
+    getAmigos(token)
+      .then((data) => setAmigos(data.map(adaptarAmigo)))
+      .catch((error) => {
+        console.error("Error al cargar amigos:", error);
+      });
+  }, []);
+
   /*
    * Abrir modal de invitación.
    */
   const handleOpenInvite = (match) => {
-    const pertenece = MY_MATCHES.some(
-      (partido) => partido.id === match.id
-    );
-
     const estaLleno =
       match.players >= match.maxPlayers;
 
-    if (!pertenece || estaLleno) {
+    if (!match.estoyUnido || estaLleno) {
       return;
     }
 
     setPartidoAInvitar(match);
   };
 
-  /*
-   * Crear invitación mock.
-   *
-   * IMPORTANTE:
-   * Esto NO agrega al amigo al partido.
-   */
-  const handleInviteFriend = (friend) => {
+  const handleInviteFriend = async (friend) => {
     if (!partidoAInvitar) {
       return;
     }
 
-    const usuarioActual = getCurrentPlayer();
+    const token = localStorage.getItem("token");
 
-    const yaFueInvitado =
-      invitacionesEnviadas.some(
-        (invitacion) =>
-          invitacion.matchId === partidoAInvitar.id &&
-          invitacion.toUserId === friend.id &&
-          invitacion.status === "pending"
-      );
-
-    if (yaFueInvitado) {
+    if (!token) {
       return;
     }
 
-    const nuevaInvitacion = {
-      id: `invitacion-${Date.now()}-${friend.id}`,
-      matchId: partidoAInvitar.id,
-      fromUserId: usuarioActual.id,
-      toUserId: friend.id,
-      status: "pending",
-    };
+    try {
+      const respuesta = await invitarAPartido(
+        token,
+        partidoAInvitar.id,
+        friend.id
+      );
 
-    setInvitacionesEnviadas((prev) => [
-      ...prev,
-      nuevaInvitacion,
-    ]);
+      if (respuesta.estado === "pendiente") {
+        setInvitacionesEnviadas((prev) => [
+          ...prev,
+          {
+            matchId: partidoAInvitar.id,
+            toUserId: friend.id,
+          },
+        ]);
+      }
+    } catch (error) {
+      console.error("Error al invitar amigo:", error);
+    }
   };
 
   const invitedIds = partidoAInvitar
     ? invitacionesEnviadas
         .filter(
           (invitacion) =>
-            invitacion.matchId ===
-              partidoAInvitar.id &&
-            invitacion.status === "pending"
+            invitacion.matchId === partidoAInvitar.id
         )
         .map(
           (invitacion) => invitacion.toUserId
         )
     : [];
-
-  // "version" no se usa dentro del callback: solo fuerza a recalcular
-  // esta lista cada vez que useMisPartidos muta MY_MATCHES/AVAILABLE_MATCHES
-  // (arrays de mock, no estado de React).
-  const partidosDisponibles = useMemo(() => {
-    const idsMisPartidos = new Set(
-      MY_MATCHES.map((partido) => partido.id)
-    );
-
-    return AVAILABLE_MATCHES.filter(
-      (partido) =>
-        !idsMisPartidos.has(partido.id)
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [version]);
 
   const filteredMatches = useMemo(() => {
     const term = query.trim().toLowerCase();
@@ -145,10 +148,7 @@ export default function Partidos() {
 
   const puedeInvitarDesdeDetalles =
     partidoDetalle &&
-    MY_MATCHES.some(
-      (partido) =>
-        partido.id === partidoDetalle.id
-    ) &&
+    partidoDetalle.estoyUnido &&
     partidoDetalle.players <
       partidoDetalle.maxPlayers;
 
@@ -181,6 +181,12 @@ export default function Partidos() {
           </button>
         </section>
 
+        {error && (
+          <div className="mb-6 rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-800 dark:border-red-700 dark:bg-red-950/30 dark:text-red-300">
+            {error}
+          </div>
+        )}
+
         {/* Mis Partidos */}
         <section className="mb-10">
           <SectionTitle
@@ -189,9 +195,13 @@ export default function Partidos() {
             onAction={() => navigate("/partidos")}
           />
 
-          {MY_MATCHES.length > 0 ? (
+          {cargando ? (
+            <p className="text-sm text-zinc-400">
+              Cargando partidos...
+            </p>
+          ) : misPartidos.length > 0 ? (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {MY_MATCHES.map((match) => (
+              {misPartidos.map((match) => (
                 <PartidoCard
                   key={match.id}
                   match={match}
@@ -225,7 +235,11 @@ export default function Partidos() {
             />
           </div>
 
-          {filteredMatches.length > 0 ? (
+          {cargando ? (
+            <p className="text-sm text-zinc-400">
+              Cargando partidos...
+            </p>
+          ) : filteredMatches.length > 0 ? (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {filteredMatches.map((match) => (
                 <PartidoCard
@@ -267,7 +281,7 @@ export default function Partidos() {
       {partidoAInvitar && (
         <InviteFriendModal
           match={partidoAInvitar}
-          friends={FRIENDS_MOCK}
+          friends={amigos}
           invitedIds={invitedIds}
           onInvite={handleInviteFriend}
           onClose={() =>

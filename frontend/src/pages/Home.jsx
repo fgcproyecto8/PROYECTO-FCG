@@ -1,5 +1,5 @@
 import { ChevronRight } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 
 import Header from "../components/Header.jsx";
@@ -13,15 +13,13 @@ import LeaveMatchModal from "../components/LeaveMatchModal.jsx";
 import { formatPrecio } from "../utils/format";
 import { getCanchas } from "../services/api.js";
 
-import { MY_MATCHES, AVAILABLE_MATCHES } from "../data/partidos";
-
 import { useMisPartidos } from "../hooks/useMisPartidos.js";
 
 export default function Home() {
   const navigate = useNavigate();
 
   const {
-    version,
+    partidos,
     partidoPrivado,
     partidoAAbandonar,
     closePrivadoModal,
@@ -60,15 +58,6 @@ export default function Home() {
   const username =
     user?.username || user?.email || "Jugador";
 
-  // "version" no se usa dentro del callback: solo fuerza a recalcular
-  // el Set cada vez que useMisPartidos muta MY_MATCHES (array de mock,
-  // no estado de React).
-  const misPartidosIds = useMemo(
-    () => new Set(MY_MATCHES.map((partido) => partido.id)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [version]
-  );
-
   const featuredFields = canchas.slice(0, 3).map(
     (cancha) => ({
       id: cancha.id,
@@ -80,7 +69,7 @@ export default function Home() {
     })
   );
 
-  const openMatches = AVAILABLE_MATCHES.slice(0, 3).map(
+  const openMatches = partidos.slice(0, 3).map(
     (partido) => ({
       id: partido.id,
       day: partido.date,
@@ -90,6 +79,7 @@ export default function Home() {
       players: partido.players,
       capacity: partido.maxPlayers,
       level: partido.type,
+      estoyUnido: partido.estoyUnido,
     })
   );
 
@@ -167,7 +157,7 @@ export default function Home() {
                 match={match}
                 onJoin={handleJoin}
                 onLeave={handleLeave}
-                joined={misPartidosIds.has(match.id)}
+                joined={match.estoyUnido}
               />
             ))}
           </div>

@@ -20,24 +20,18 @@ import HorarioSelector from "../components/HorarioSelector";
 import RatingBadge from "../components/RatingBadge";
 
 import { formatPrecio } from "../utils/format";
-import { getCanchas } from "../services/api.js";
+import { mapearErroresDeCampos } from "../utils/apiErrors.js";
+import { hoyComoISO, mananaComoISO } from "../utils/partidoAdapter";
+import { getCanchas, getPartidos, crearPartido } from "../services/api.js";
 
-import {
-  obtenerHorariosMock,
-  quitarHorarioMock,
-} from "../data/horariosMock";
-
-import {
-  MY_MATCHES,
-  AVAILABLE_MATCHES,
-  getCurrentPlayer,
-} from "../data/partidos";
+import { obtenerHorariosMock } from "../data/horariosMock";
 
 export default function CrearPartido() {
   const navigate = useNavigate();
 
   const [canchas, setCanchas] = useState([]);
   const [canchaId, setCanchaId] = useState(null);
+  const [partidosExistentes, setPartidosExistentes] = useState([]);
 
   const [form, setForm] = useState({
     nombre: "",
@@ -51,6 +45,7 @@ export default function CrearPartido() {
   const [esPublico, setEsPublico] = useState(true);
   const [errores, setErrores] = useState({});
   const [mensaje, setMensaje] = useState("");
+  const [guardando, setGuardando] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -60,22 +55,26 @@ export default function CrearPartido() {
       return;
     }
 
-    const cargarCanchas = async () => {
+    const cargarDatos = async () => {
       try {
-        const data = await getCanchas(token);
+        const [datosCanchas, datosPartidos] = await Promise.all([
+          getCanchas(token),
+          getPartidos(token),
+        ]);
 
-        const canchasConHorarios = data.map((c) => ({
+        const canchasConHorarios = datosCanchas.map((c) => ({
           ...c,
           horarios: obtenerHorariosMock(c.id),
         }));
 
         setCanchas(canchasConHorarios);
+        setPartidosExistentes(datosPartidos);
 
         if (canchasConHorarios.length > 0) {
           setCanchaId(canchasConHorarios[0].id);
         }
       } catch (error) {
-        console.error("Error al cargar canchas:", error);
+        console.error("Error al cargar datos:", error);
 
         if (error.status === 401) {
           localStorage.removeItem("token");
@@ -85,7 +84,7 @@ export default function CrearPartido() {
       }
     };
 
-    cargarCanchas();
+    cargarDatos();
   }, [navigate]);
 
   const cancha = useMemo(
@@ -135,6 +134,10 @@ export default function CrearPartido() {
       .trim()
       .replace(/\s+/g, " ")
       .toLowerCase();
+  };
+
+  const fechaISODelDia = (dia) => {
+    return dia === "hoy" ? hoyComoISO() : mananaComoISO();
   };
 
   const setCampo = (campo, valor) => {
@@ -205,12 +208,9 @@ export default function CrearPartido() {
     } else {
       const nombreNuevo = normalizarNombre(form.nombre);
 
-      const nombreYaExiste = [
-        ...MY_MATCHES,
-        ...AVAILABLE_MATCHES,
-      ].some(
+      const nombreYaExiste = partidosExistentes.some(
         (partido) =>
-          normalizarNombre(partido.name) === nombreNuevo
+          normalizarNombre(partido.nombre) === nombreNuevo
       );
 
       if (nombreYaExiste) {
@@ -225,27 +225,14 @@ export default function CrearPartido() {
     }
 
     if (cancha && horarioSeleccionado) {
-      const fecha =
-        horarioSeleccionado.dia === "hoy"
-          ? "Hoy"
-          : "Mañana";
+      const fechaISO = fechaISODelDia(horarioSeleccionado.dia);
 
-      const horarioYaOcupado = [
-        ...MY_MATCHES,
-        ...AVAILABLE_MATCHES,
-      ].some((partido) => {
-        const mismaCancha =
-          partido.canchaId === cancha.id;
-
-        const mismoDia =
-          partido.dayKey === horarioSeleccionado.dia ||
-          partido.date === fecha;
-
-        const mismaHora =
-          partido.time === horarioSeleccionado.hora;
-
-        return mismaCancha && mismoDia && mismaHora;
-      });
+      const horarioYaOcupado = partidosExistentes.some(
+        (partido) =>
+          partido.cancha === cancha.id &&
+          partido.fecha === fechaISO &&
+          partido.hora?.slice(0, 5) === horarioSeleccionado.hora
+      );
 
       if (horarioYaOcupado) {
         nuevosErrores.horario =
@@ -263,80 +250,68 @@ export default function CrearPartido() {
     return Object.keys(nuevosErrores).length === 0;
   };
 
-  const handleCreateMatch = () => {
+  const handleCreateMatch = async () => {
     setMensaje("");
 
     if (!validar()) {
       return;
     }
 
-    const modalidad = getModalidad(cancha);
-    const cupos = getCupos(cancha);
+    const token = localStorage.getItem("token");
 
-    const precioPorJugador =
-      cupos && cancha.precio
-        ? Math.round(cancha.precio / cupos)
-        : 0;
-    const creador = getCurrentPlayer();
-    const nuevoPartido = {
-      id: `creado-${Date.now()}`,
-      image: cancha.imagen,
-      name: form.nombre.trim(),
-      fieldName: cancha.nombre,
-      type: esPublico ? "Público" : "Privado",
-      status: "Pendiente",
+    if (!token) {
+      navigate("/login", { replace: true });
+      return;
+    }
 
-      date:
-        horarioSeleccionado.dia === "hoy"
-          ? "Hoy"
-          : "Mañana",
+    try {
+      setGuardando(true);
 
-      dayKey: horarioSeleccionado.dia,
+      await crearPartido(token, {
+        cancha: cancha.id,
+        nombre: form.nombre.trim(),
+        descripcion: form.descripcion.trim(),
+        fecha: fechaISODelDia(horarioSeleccionado.dia),
+        hora: horarioSeleccionado.hora,
+        es_publico: esPublico,
+        password: esPublico ? "" : form.password.trim(),
+      });
 
-      time: horarioSeleccionado.hora,
-      address: cancha.direccion,
+      setMensaje("¡Partido creado correctamente!");
 
-      players: 1,
-      maxPlayers: cupos,
-      playersList: [creador],
+      setTimeout(() => {
+        navigate("/partidos");
+      }, 900);
+    } catch (error) {
+      console.error("Error al crear el partido:", error);
 
-      pricePerPlayer:
-        precioPorJugador.toLocaleString("es-AR"),
+      if (error.status === 401) {
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+        navigate("/login", { replace: true });
+        return;
+      }
 
-      totalPrice:
-        Number(cancha.precio).toLocaleString("es-AR"),
+      const erroresBackend = mapearErroresDeCampos(
+        error.data || {},
+        {
+          nombre: "nombre",
+          horario: "horario",
+          password: "password",
+          cancha: "cancha",
+        }
+      );
 
-      descripcion: form.descripcion.trim(),
+      if (Object.keys(erroresBackend).length > 0) {
+        setErrores((prev) => ({ ...prev, ...erroresBackend }));
+      } else {
+        setMensaje(
+          error.message || "No se pudo crear el partido."
+        );
+      }
 
-      password: esPublico
-        ? null
-        : form.password.trim(),
-
-      canchaId: cancha.id,
-      modalidad,
-    };
-
-    MY_MATCHES.unshift({
-      ...nuevoPartido,
-      playersList: [...nuevoPartido.playersList],
-    });
-
-    AVAILABLE_MATCHES.unshift({
-      ...nuevoPartido,
-      playersList: [...nuevoPartido.playersList],
-    });
-
-    quitarHorarioMock(
-      cancha.id,
-      horarioSeleccionado.dia,
-      horarioSeleccionado.hora
-    );
-
-    setMensaje("¡Partido creado correctamente!");
-
-    setTimeout(() => {
-      navigate("/partidos");
-    }, 900);
+      setGuardando(false);
+    }
   };
 
   return (
@@ -658,10 +633,11 @@ export default function CrearPartido() {
           <button
             type="button"
             onClick={handleCreateMatch}
-            className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-full bg-emerald-500 px-6 py-4 text-base font-bold text-slate-950 transition hover:bg-emerald-400"
+            disabled={guardando}
+            className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-full bg-emerald-500 px-6 py-4 text-base font-bold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <CirclePlus className="h-5 w-5" />
-            Crear Partido
+            {guardando ? "Creando..." : "Crear Partido"}
           </button>
         </Card>
       </main>

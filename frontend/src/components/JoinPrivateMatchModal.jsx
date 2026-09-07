@@ -9,16 +9,20 @@ export default function JoinPrivateMatchModal({
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!password.trim()) {
       setError("Ingresá la contraseña.");
       return;
     }
 
-    const result = onConfirm(password);
+    const result = await onConfirm(password);
 
-    if (result === false) {
-      setError("Contraseña incorrecta.");
+    if (result !== true) {
+      setError(
+        typeof result === "string"
+          ? result
+          : "Contraseña incorrecta."
+      );
     }
   };
 

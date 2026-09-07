@@ -319,3 +319,88 @@ export function eliminarCancha(token, canchaId) {
     },
   });
 }
+
+
+// PARTIDOS
+
+export function getPartidos(token) {
+  return request("/partidos/", {
+    method: "GET",
+    headers: {
+      Authorization: `Token ${token}`,
+    },
+  });
+}
+
+
+export function crearPartido(token, datos) {
+  return request("/partidos/", {
+    method: "POST",
+    headers: {
+      Authorization: `Token ${token}`,
+    },
+    body: JSON.stringify(datos),
+  });
+}
+
+
+export function unirsePartido(token, partidoId, password = "") {
+  return request(`/partidos/${partidoId}/unirse/`, {
+    method: "POST",
+    headers: {
+      Authorization: `Token ${token}`,
+    },
+    body: JSON.stringify({ password }),
+  });
+}
+
+
+export function abandonarPartido(token, partidoId) {
+  return request(`/partidos/${partidoId}/abandonar/`, {
+    method: "POST",
+    headers: {
+      Authorization: `Token ${token}`,
+    },
+  });
+}
+
+
+export function invitarAPartido(token, partidoId, destinatarioId) {
+  return request(`/partidos/${partidoId}/invitar/`, {
+    method: "POST",
+    headers: {
+      Authorization: `Token ${token}`,
+    },
+    body: JSON.stringify({ destinatario_id: destinatarioId }),
+  });
+}
+
+
+export function getInvitacionesPartido(token) {
+  return request("/partidos/invitaciones/", {
+    method: "GET",
+    headers: {
+      Authorization: `Token ${token}`,
+    },
+  });
+}
+
+
+export function aceptarInvitacionPartido(token, invitacionId) {
+  return request(`/partidos/invitaciones/${invitacionId}/aceptar/`, {
+    method: "POST",
+    headers: {
+      Authorization: `Token ${token}`,
+    },
+  });
+}
+
+
+export function rechazarInvitacionPartido(token, invitacionId) {
+  return request(`/partidos/invitaciones/${invitacionId}/rechazar/`, {
+    method: "POST",
+    headers: {
+      Authorization: `Token ${token}`,
+    },
+  });
+}

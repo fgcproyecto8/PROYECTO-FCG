@@ -1,5 +1,7 @@
 from django.contrib.auth import authenticate
+from django.contrib.auth.hashers import check_password
 from django.contrib.auth.models import User
+from django.db import IntegrityError, transaction
 from django.db.models import Q, Avg, Count
 
 from rest_framework.authtoken.models import Token
@@ -10,6 +12,9 @@ from rest_framework import status
 
 from .models import (
     Cancha,
+    Partido,
+    ParticipacionPartido,
+    InvitacionPartido,
     Perfil,
     SolicitudDueno,
     CalificacionUsuario,
@@ -24,6 +29,9 @@ from .serializers import (
     PerfilUpdateSerializer,
     UsuarioPublicoSerializer,
     CanchaSerializer,
+    PartidoSerializer,
+    InvitarAPartidoSerializer,
+    InvitacionPartidoSerializer,
     CalificacionUsuarioSerializer,
     EnviarSolicitudAmistadSerializer,
     SolicitudAmistadRecibidaSerializer,
@@ -729,6 +737,405 @@ def eliminar_amigo(request, usuario_id):
 
     return Response({
         "mensaje": "Amigo eliminado correctamente."
+    })
+
+
+@api_view(["GET", "POST"])
+def partidos(request):
+
+    if request.method == "GET":
+
+        listado = Partido.objects.select_related(
+            "cancha", "creador"
+        ).prefetch_related(
+            "participaciones__usuario"
+        )
+
+        serializer = PartidoSerializer(
+            listado,
+            many=True,
+            context={"request": request}
+        )
+
+        return Response(serializer.data)
+
+    # POST
+
+    serializer = PartidoSerializer(
+        data=request.data,
+        context={"request": request}
+    )
+
+    if not serializer.is_valid():
+        return Response(
+            serializer.errors,
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        partido = serializer.save(creador=request.user)
+    except IntegrityError:
+        return Response(
+            {
+                "mensaje": "Ese horario ya está ocupado por otro partido."
+            },
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    return Response(
+        PartidoSerializer(
+            partido,
+            context={"request": request}
+        ).data,
+        status=status.HTTP_201_CREATED
+    )
+
+
+@api_view(["POST"])
+def unirse_partido(request, partido_id):
+
+    with transaction.atomic():
+
+        partido = Partido.objects.select_for_update().filter(
+            id=partido_id
+        ).first()
+
+        if partido is None:
+            return Response(
+                {
+                    "mensaje": "Partido no encontrado."
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        ya_es_participante = partido.participaciones.filter(
+            usuario=request.user
+        ).exists()
+
+        if ya_es_participante:
+            return Response(
+                {
+                    "mensaje": "Ya estás en este partido."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if partido.participaciones.count() >= partido.cupo:
+            return Response(
+                {
+                    "mensaje": "El partido está lleno."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not partido.es_publico:
+
+            password_ingresada = request.data.get(
+                "password", ""
+            )
+
+            if not check_password(
+                password_ingresada, partido.password
+            ):
+                return Response(
+                    {
+                        "mensaje": "Contraseña incorrecta."
+                    },
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
+
+        ParticipacionPartido.objects.create(
+            partido=partido,
+            usuario=request.user
+        )
+
+    serializer = PartidoSerializer(
+        partido,
+        context={"request": request}
+    )
+
+    return Response(serializer.data)
+
+
+@api_view(["POST"])
+def abandonar_partido(request, partido_id):
+
+    with transaction.atomic():
+
+        partido = Partido.objects.select_for_update().filter(
+            id=partido_id
+        ).first()
+
+        if partido is None:
+            return Response(
+                {
+                    "mensaje": "Partido no encontrado."
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        participacion = partido.participaciones.filter(
+            usuario=request.user
+        ).first()
+
+        if participacion is None:
+            return Response(
+                {
+                    "mensaje": "No formás parte de este partido."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        participacion.delete()
+
+        if partido.participaciones.count() == 0:
+            partido.delete()
+
+    return Response({
+        "mensaje": "Abandonaste el partido correctamente."
+    })
+
+
+@api_view(["POST"])
+def invitar_a_partido(request, partido_id):
+
+    partido = Partido.objects.select_related(
+        "cancha"
+    ).filter(
+        id=partido_id
+    ).first()
+
+    if partido is None:
+        return Response(
+            {
+                "mensaje": "Partido no encontrado."
+            },
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    if not partido.participaciones.filter(
+        usuario=request.user
+    ).exists():
+        return Response(
+            {
+                "mensaje": "Solo los participantes pueden invitar."
+            },
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    serializer = InvitarAPartidoSerializer(
+        data=request.data
+    )
+
+    if not serializer.is_valid():
+        return Response(
+            serializer.errors,
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    destinatario_id = serializer.validated_data[
+        "destinatario_id"
+    ]
+
+    if destinatario_id == request.user.id:
+        return Response(
+            {
+                "mensaje": "No podés invitarte a vos mismo."
+            },
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    destinatario = User.objects.filter(
+        id=destinatario_id
+    ).first()
+
+    if destinatario is None:
+        return Response(
+            {
+                "mensaje": "Usuario no encontrado."
+            },
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    son_amigos = SolicitudAmistad.objects.filter(
+        Q(
+            remitente=request.user,
+            destinatario=destinatario
+        )
+        |
+        Q(
+            remitente=destinatario,
+            destinatario=request.user
+        ),
+        estado=SolicitudAmistad.Estado.ACEPTADA
+    ).exists()
+
+    if not son_amigos:
+        return Response(
+            {
+                "mensaje": "Solo podés invitar a amigos."
+            },
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    if partido.participaciones.filter(
+        usuario=destinatario
+    ).exists():
+        return Response(
+            {
+                "mensaje": "Ese usuario ya está en el partido."
+            },
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if partido.participaciones.count() >= partido.cupo:
+        return Response(
+            {
+                "mensaje": "El partido está lleno."
+            },
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    existente = InvitacionPartido.objects.filter(
+        partido=partido,
+        destinatario=destinatario
+    ).first()
+
+    if existente:
+
+        if existente.estado == InvitacionPartido.Estado.PENDIENTE:
+            return Response({
+                "mensaje": "Ya invitaste a este usuario.",
+                "estado": "pendiente",
+            })
+
+        if existente.estado == InvitacionPartido.Estado.ACEPTADA:
+            return Response({
+                "mensaje": "Ese usuario ya está en el partido.",
+                "estado": "aceptada",
+            })
+
+        existente.delete()
+
+    invitacion = InvitacionPartido.objects.create(
+        partido=partido,
+        remitente=request.user,
+        destinatario=destinatario
+    )
+
+    return Response(
+        {
+            "mensaje": "Invitación enviada correctamente.",
+            "estado": "pendiente",
+            "invitacion_id": invitacion.id,
+        },
+        status=status.HTTP_201_CREATED
+    )
+
+
+@api_view(["GET"])
+def invitaciones_partido_recibidas(request):
+
+    invitaciones = InvitacionPartido.objects.filter(
+        destinatario=request.user,
+        estado=InvitacionPartido.Estado.PENDIENTE
+    ).select_related(
+        "partido", "partido__cancha", "remitente"
+    ).order_by("-fecha_creacion")
+
+    serializer = InvitacionPartidoSerializer(
+        invitaciones,
+        many=True,
+        context={"request": request}
+    )
+
+    return Response(serializer.data)
+
+
+@api_view(["POST"])
+def aceptar_invitacion_partido(request, invitacion_id):
+
+    invitacion = InvitacionPartido.objects.filter(
+        id=invitacion_id,
+        destinatario=request.user,
+        estado=InvitacionPartido.Estado.PENDIENTE
+    ).first()
+
+    if invitacion is None:
+        return Response(
+            {
+                "mensaje": "Invitación no encontrada."
+            },
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    with transaction.atomic():
+
+        partido = Partido.objects.select_for_update().get(
+            id=invitacion.partido_id
+        )
+
+        ya_es_participante = partido.participaciones.filter(
+            usuario=request.user
+        ).exists()
+
+        if not ya_es_participante:
+
+            if partido.participaciones.count() >= partido.cupo:
+                return Response(
+                    {
+                        "mensaje": "El partido ya está lleno."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            ParticipacionPartido.objects.create(
+                partido=partido,
+                usuario=request.user
+            )
+
+        invitacion.estado = InvitacionPartido.Estado.ACEPTADA
+
+        invitacion.save(
+            update_fields=[
+                "estado",
+                "fecha_actualizacion"
+            ]
+        )
+
+    return Response({
+        "mensaje": "Invitación aceptada. Ya formás parte del partido."
+    })
+
+
+@api_view(["POST"])
+def rechazar_invitacion_partido(request, invitacion_id):
+
+    invitacion = InvitacionPartido.objects.filter(
+        id=invitacion_id,
+        destinatario=request.user,
+        estado=InvitacionPartido.Estado.PENDIENTE
+    ).first()
+
+    if invitacion is None:
+        return Response(
+            {
+                "mensaje": "Invitación no encontrada."
+            },
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    invitacion.estado = InvitacionPartido.Estado.RECHAZADA
+
+    invitacion.save(
+        update_fields=[
+            "estado",
+            "fecha_actualizacion"
+        ]
+    )
+
+    return Response({
+        "mensaje": "Invitación rechazada."
     })
 
 

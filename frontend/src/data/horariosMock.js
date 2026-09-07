@@ -1,11 +1,14 @@
-// Los horarios/reservas todavia no tienen backend propio (a proposito,
-// ver bloque de "Partidos"). Esto guarda en localStorage, por cancha
-// real (id que ahora viene de Django), que horarios estan disponibles
-// hoy y mañana, para que el flujo mock de Crear Partido siga
-// funcionando igual que antes. Tiene que ser localStorage (no un
-// objeto en memoria) porque la cancha en si ya persiste de verdad en
-// el backend: si el navegador se recarga, sus horarios no pueden
-// desaparecer mientras la cancha sigue ahi.
+// Representa UNICAMENTE los horarios que el dueño de la cancha
+// configuro como ofrecidos (se editan desde CanchaForm.jsx). Ya NO
+// representa "ocupacion" de partidos: como Partido ahora es real
+// (backend/api/models.py), que un turno este tomado o libre se
+// decide exclusivamente por la existencia de un Partido real para esa
+// cancha/fecha/hora (UniqueConstraint en el modelo). Por eso este
+// archivo no tiene funciones para "ocupar"/"liberar" un horario.
+//
+// Sigue viviendo en localStorage porque el sistema de horarios en si
+// (mas alla de que Partido ya sea real) todavia es mock a proposito,
+// segun lo acordado para este bloque.
 
 const STORAGE_KEY = "horarios_canchas";
 
@@ -54,28 +57,4 @@ export function guardarHorariosMock(canchaId, horarios) {
   todos[String(canchaId)] = horarios;
 
   guardarTodosLosHorarios(todos);
-}
-
-export function agregarHorarioMock(canchaId, dia, hora) {
-  const actuales = obtenerHorariosMock(canchaId);
-
-  if (actuales[dia]?.includes(hora)) {
-    return;
-  }
-
-  guardarHorariosMock(canchaId, {
-    ...actuales,
-    [dia]: [...(actuales[dia] || []), hora].sort((a, b) =>
-      a.localeCompare(b)
-    ),
-  });
-}
-
-export function quitarHorarioMock(canchaId, dia, hora) {
-  const actuales = obtenerHorariosMock(canchaId);
-
-  guardarHorariosMock(canchaId, {
-    ...actuales,
-    [dia]: (actuales[dia] || []).filter((h) => h !== hora),
-  });
 }

@@ -225,6 +225,161 @@ class Cancha(models.Model):
         return f"{self.nombre} ({self.dueno.username})"
 
 
+CUPO_POR_TIPO = {
+    Cancha.Tipo.FUTBOL_5: 10,
+    Cancha.Tipo.FUTBOL_7: 14,
+    Cancha.Tipo.FUTBOL_11: 22,
+}
+
+MODALIDAD_POR_CUPO = {
+    10: "5 vs 5",
+    14: "7 vs 7",
+    22: "11 vs 11",
+}
+
+
+class Partido(models.Model):
+
+    creador = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="partidos_creados"
+    )
+
+    cancha = models.ForeignKey(
+        Cancha,
+        on_delete=models.CASCADE,
+        related_name="partidos"
+    )
+
+    nombre = models.CharField(
+        max_length=150
+    )
+
+    descripcion = models.TextField(
+        blank=True
+    )
+
+    fecha = models.DateField()
+
+    hora = models.TimeField()
+
+    cupo = models.PositiveSmallIntegerField()
+
+    es_publico = models.BooleanField(
+        default=True
+    )
+
+    # Hash (Django password hashers), nunca texto plano. Vacio si
+    # es_publico=True.
+    password = models.CharField(
+        max_length=128,
+        blank=True
+    )
+
+    fecha_creacion = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["cancha", "fecha", "hora"],
+                name="partido_cancha_fecha_hora_unico"
+            )
+        ]
+
+        ordering = ["-fecha_creacion"]
+
+    def __str__(self):
+        return f"{self.nombre} - {self.cancha.nombre} ({self.fecha} {self.hora})"
+
+
+class ParticipacionPartido(models.Model):
+
+    partido = models.ForeignKey(
+        Partido,
+        on_delete=models.CASCADE,
+        related_name="participaciones"
+    )
+
+    usuario = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="participaciones_partidos"
+    )
+
+    fecha_union = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["partido", "usuario"],
+                name="participacion_partido_unica"
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.usuario.username} en {self.partido.nombre}"
+
+
+class InvitacionPartido(models.Model):
+
+    class Estado(models.TextChoices):
+        PENDIENTE = "pendiente", "Pendiente"
+        ACEPTADA = "aceptada", "Aceptada"
+        RECHAZADA = "rechazada", "Rechazada"
+
+    partido = models.ForeignKey(
+        Partido,
+        on_delete=models.CASCADE,
+        related_name="invitaciones"
+    )
+
+    remitente = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="invitaciones_partido_enviadas"
+    )
+
+    destinatario = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="invitaciones_partido_recibidas"
+    )
+
+    estado = models.CharField(
+        max_length=20,
+        choices=Estado.choices,
+        default=Estado.PENDIENTE
+    )
+
+    fecha_creacion = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    fecha_actualizacion = models.DateTimeField(
+        auto_now=True
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["partido", "destinatario"],
+                name="invitacion_partido_unica"
+            )
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.remitente.username} invita a "
+            f"{self.destinatario.username} a {self.partido.nombre} "
+            f"({self.estado})"
+        )
+
+
 class SolicitudAmistad(models.Model):
 
     class Estado(models.TextChoices):
