@@ -140,6 +140,39 @@ export default function CrearPartido() {
     return dia === "hoy" ? hoyComoISO() : mananaComoISO();
   };
 
+  // Horarios que el dueño ofrece para esta cancha (horariosMock) menos
+  // los que ya estan ocupados por un partido real existente para esa
+  // misma cancha+fecha+hora. Esto es solo para no OFRECER un horario
+  // ocupado en los chips; el backend sigue siendo quien impide crear
+  // dos partidos en el mismo cancha+fecha+hora (UniqueConstraint +
+  // validate() de PartidoSerializer), esto no lo duplica, solo evita
+  // que el usuario llegue a intentarlo.
+  const horasOcupadas = (dia) => {
+    if (!cancha) {
+      return new Set();
+    }
+
+    const fechaISO = fechaISODelDia(dia);
+
+    return new Set(
+      partidosExistentes
+        .filter(
+          (partido) =>
+            partido.cancha === cancha.id &&
+            partido.fecha === fechaISO
+        )
+        .map((partido) => partido.hora?.slice(0, 5))
+    );
+  };
+
+  const horariosDisponibles = (dia) => {
+    const ocupados = horasOcupadas(dia);
+
+    return (cancha?.horarios?.[dia] || []).filter(
+      (hora) => !ocupados.has(hora)
+    );
+  };
+
   const setCampo = (campo, valor) => {
     setForm((prev) => ({
       ...prev,
@@ -404,7 +437,7 @@ export default function CrearPartido() {
                   <HorarioSelector
                     titulo="HOY"
                     dia="hoy"
-                    horarios={cancha.horarios?.hoy || []}
+                    horarios={horariosDisponibles("hoy")}
                     seleccionado={horarioSeleccionado}
                     onSelect={seleccionarHorario}
                   />
@@ -412,7 +445,7 @@ export default function CrearPartido() {
                   <HorarioSelector
                     titulo="MAÑANA"
                     dia="manana"
-                    horarios={cancha.horarios?.manana || []}
+                    horarios={horariosDisponibles("manana")}
                     seleccionado={horarioSeleccionado}
                     onSelect={seleccionarHorario}
                   />

@@ -18,6 +18,7 @@ export default function UserCard({
   variant = "search",
   friendshipStatus = "ninguna",
   onAdd,
+  onCancelRequest,
   onAccept,
   onReject,
   onRemove,
@@ -190,8 +191,17 @@ export default function UserCard({
             {variant === "search" && (
               <button
                 type="button"
-                disabled={friendshipStatus !== "ninguna"}
-                onClick={() => onAdd?.(user)}
+                disabled={
+                  friendshipStatus === "amigos" ||
+                  friendshipStatus === "recibida"
+                }
+                onClick={() => {
+                  if (friendshipStatus === "enviada") {
+                    onCancelRequest?.(user);
+                  } else if (friendshipStatus === "ninguna") {
+                    onAdd?.(user);
+                  }
+                }}
                 className={`
                   flex flex-1 items-center justify-center gap-2
                   rounded-lg px-4 py-2
@@ -199,7 +209,9 @@ export default function UserCard({
                   ${
                     friendshipStatus === "ninguna"
                       ? "bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-500/15 dark:text-green-400 dark:hover:bg-green-500/25"
-                      : "cursor-default bg-gray-100 text-gray-500 dark:bg-white/5 dark:text-gray-400"
+                      : friendshipStatus === "enviada"
+                        ? "bg-amber-100 text-amber-700 hover:bg-red-100 hover:text-red-600 dark:bg-amber-500/15 dark:text-amber-400 dark:hover:bg-red-500/15 dark:hover:text-red-400"
+                        : "cursor-default bg-gray-100 text-gray-500 dark:bg-white/5 dark:text-gray-400"
                   }
                 `}
               >
@@ -210,8 +222,8 @@ export default function UserCard({
                   </>
                 ) : friendshipStatus === "enviada" ? (
                   <>
-                    <Check size={17} />
-                    Solicitud enviada
+                    <X size={17} />
+                    Cancelar solicitud
                   </>
                 ) : friendshipStatus === "recibida" ? (
                   <>

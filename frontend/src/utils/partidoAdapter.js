@@ -42,6 +42,7 @@ export function adaptarPartido(partido) {
     descripcion: partido.descripcion,
     modalidad: partido.modalidad,
     estoyUnido: Boolean(partido.estoy_unido),
+    vencido: Boolean(partido.vencido),
   };
 }
 

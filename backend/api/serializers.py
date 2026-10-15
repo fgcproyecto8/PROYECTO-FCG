@@ -19,6 +19,8 @@ from .models import (
     Perfil,
     SolicitudDueno,
     SolicitudAmistad,
+    partido_esta_vencido,
+    partidos_jugados_por_usuario,
     usuario_puede_editar_cancha,
 )
 
@@ -154,7 +156,10 @@ class RegisterSerializer(serializers.Serializer):
 
 
 class LoginSerializer(serializers.Serializer):
-    email = serializers.EmailField()
+    # Acepta nombre de usuario O email; la vista decide cual es segun
+    # si encuentra una cuenta por username (se prueba primero, ya que
+    # es unico de por si).
+    identificador = serializers.CharField()
 
     password = serializers.CharField(
         write_only=True
@@ -221,6 +226,7 @@ class UsuarioPublicoSerializer(serializers.ModelSerializer):
     cantidad_calificaciones = serializers.SerializerMethodField()
     mi_calificacion = serializers.SerializerMethodField()
     estado_amistad = serializers.SerializerMethodField()
+    partidos_jugados = serializers.SerializerMethodField()
 
     def get_foto(self, user):
         request = self.context.get("request")
@@ -322,6 +328,15 @@ class UsuarioPublicoSerializer(serializers.ModelSerializer):
 
         return "recibida"
 
+    def get_partidos_jugados(self, user):
+
+        partidos_jugados = self.context.get("partidos_jugados")
+
+        if partidos_jugados is not None:
+            return partidos_jugados.get(user.id, 0)
+
+        return partidos_jugados_por_usuario([user.id])[user.id]
+
     class Meta:
         model = User
 
@@ -337,6 +352,7 @@ class UsuarioPublicoSerializer(serializers.ModelSerializer):
             "cantidad_calificaciones",
             "mi_calificacion",
             "estado_amistad",
+            "partidos_jugados",
         )
 
 
@@ -427,6 +443,7 @@ class PartidoSerializer(serializers.ModelSerializer):
     precio_total = serializers.SerializerMethodField()
     precio_por_jugador = serializers.SerializerMethodField()
     estoy_unido = serializers.SerializerMethodField()
+    vencido = serializers.SerializerMethodField()
 
     creador_username = serializers.CharField(
         source="creador.username",
@@ -491,6 +508,9 @@ class PartidoSerializer(serializers.ModelSerializer):
             participacion.usuario_id == request.user.id
             for participacion in partido.participaciones.all()
         )
+
+    def get_vencido(self, partido):
+        return partido_esta_vencido(partido)
 
     def validate(self, data):
         es_publico = data.get("es_publico", True)
@@ -571,6 +591,7 @@ class PartidoSerializer(serializers.ModelSerializer):
             "precio_total",
             "precio_por_jugador",
             "estoy_unido",
+            "vencido",
             "creador_username",
             "fecha_creacion",
         )
@@ -587,6 +608,7 @@ class PartidoSerializer(serializers.ModelSerializer):
             "precio_total",
             "precio_por_jugador",
             "estoy_unido",
+            "vencido",
             "creador_username",
             "fecha_creacion",
         )

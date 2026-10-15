@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from django.contrib.auth import authenticate
 from django.contrib.auth.hashers import check_password
@@ -23,6 +23,8 @@ from .models import (
     SolicitudDueno,
     CalificacionUsuario,
     SolicitudAmistad,
+    momento_partido,
+    partidos_jugados_por_usuario,
     usuario_puede_editar_cancha,
     usuario_puede_gestionar_canchas,
 )
@@ -61,11 +63,9 @@ def _generar_notificaciones_partido_proximo(usuario):
     for participacion in participaciones:
         partido = participacion.partido
 
-        momento_partido = timezone.make_aware(
-            datetime.combine(partido.fecha, partido.hora)
-        )
+        inicio_partido = momento_partido(partido)
 
-        if not (ahora <= momento_partido <= limite):
+        if not (ahora <= inicio_partido <= limite):
             continue
 
         ya_notificado = Notificacion.objects.filter(
@@ -164,17 +164,29 @@ def login(request):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    email = serializer.validated_data["email"]
+    identificador = serializer.validated_data["identificador"].strip()
     password = serializer.validated_data["password"]
 
+    # El username es unico de por si, asi que se prueba primero. Si no
+    # matchea, se interpreta el identificador como email; si hay cero
+    # o mas de una cuenta con ese email, no elegimos ninguna al azar
+    # (se trata igual que una cuenta inexistente).
     user_encontrado = User.objects.filter(
-        email__iexact=email
+        username__iexact=identificador
     ).first()
+
+    if user_encontrado is None:
+        coincidencias_por_email = User.objects.filter(
+            email__iexact=identificador
+        )
+
+        if coincidencias_por_email.count() == 1:
+            user_encontrado = coincidencias_por_email.first()
 
     if user_encontrado is None:
         return Response(
             {
-                "mensaje": "Email o contraseña incorrectos."
+                "mensaje": "Usuario/email o contraseña incorrectos."
             },
             status=status.HTTP_401_UNAUTHORIZED
         )
@@ -188,7 +200,7 @@ def login(request):
     if user is None:
         return Response(
             {
-                "mensaje": "Email o contraseña incorrectos."
+                "mensaje": "Usuario/email o contraseña incorrectos."
             },
             status=status.HTTP_401_UNAUTHORIZED
         )
@@ -332,6 +344,10 @@ def me(request):
         "cantidad_calificaciones": (
             user.calificaciones_recibidas.count()
         ),
+
+        "partidos_jugados": (
+            partidos_jugados_por_usuario([user.id])[user.id]
+        ),
     }
 
     if perfil.rol == Perfil.Rol.DUENO_CANCHA:
@@ -363,11 +379,14 @@ def logout(request):
 
 
 def _contexto_usuarios_publicos(request, usuarios):
-    """Precalcula reputación, mi_calificacion y estado_amistad en lote
-    para una lista de usuarios, evitando N+1 queries en
-    UsuarioPublicoSerializer cuando se serializan varios a la vez."""
+    """Precalcula reputación, mi_calificacion, estado_amistad y
+    partidos_jugados en lote para una lista de usuarios, evitando N+1
+    queries en UsuarioPublicoSerializer cuando se serializan varios a
+    la vez."""
 
     ids = [usuario.id for usuario in usuarios]
+
+    partidos_jugados = partidos_jugados_por_usuario(ids)
 
     reputaciones = {
         fila["evaluado"]: {
@@ -425,6 +444,7 @@ def _contexto_usuarios_publicos(request, usuarios):
         "reputaciones": reputaciones,
         "mis_calificaciones": mis_calificaciones,
         "estados_amistad": estados_amistad,
+        "partidos_jugados": partidos_jugados,
     }
 
 
@@ -436,26 +456,32 @@ def usuarios(request):
         ""
     ).strip()
 
-    jugadores = User.objects.filter(
-        perfil__rol=Perfil.Rol.JUGADOR
+    # Jugadores y duenos de cancha son igualmente "usuarios buscables"
+    # para el sistema de amistades (solo calificar_usuario sigue
+    # restringido a jugadores, eso no cambia).
+    usuarios_buscables = User.objects.filter(
+        perfil__rol__in=[
+            Perfil.Rol.JUGADOR,
+            Perfil.Rol.DUENO_CANCHA,
+        ]
     ).exclude(
         id=request.user.id
     ).select_related("perfil")
 
     if search:
-        jugadores = jugadores.filter(
+        usuarios_buscables = usuarios_buscables.filter(
             Q(username__icontains=search)
             | Q(perfil__posicion__icontains=search)
         )
 
-    jugadores = jugadores.order_by(
+    usuarios_buscables = usuarios_buscables.order_by(
         "username"
     )
 
     serializer = UsuarioPublicoSerializer(
-        jugadores,
+        usuarios_buscables,
         many=True,
-        context=_contexto_usuarios_publicos(request, jugadores)
+        context=_contexto_usuarios_publicos(request, usuarios_buscables)
     )
 
     return Response(serializer.data)
@@ -466,13 +492,16 @@ def usuario_detalle(request, usuario_id):
 
     usuario = User.objects.filter(
         id=usuario_id,
-        perfil__rol=Perfil.Rol.JUGADOR
+        perfil__rol__in=[
+            Perfil.Rol.JUGADOR,
+            Perfil.Rol.DUENO_CANCHA,
+        ]
     ).first()
 
     if usuario is None:
         return Response(
             {
-                "mensaje": "Jugador no encontrado."
+                "mensaje": "Usuario no encontrado."
             },
             status=status.HTTP_404_NOT_FOUND
         )
@@ -500,13 +529,16 @@ def calificar_usuario(request, usuario_id):
 
     evaluado = User.objects.filter(
         id=usuario_id,
-        perfil__rol=Perfil.Rol.JUGADOR
+        perfil__rol__in=[
+            Perfil.Rol.JUGADOR,
+            Perfil.Rol.DUENO_CANCHA,
+        ]
     ).first()
 
     if evaluado is None:
         return Response(
             {
-                "mensaje": "Jugador no encontrado."
+                "mensaje": "Usuario no encontrado."
             },
             status=status.HTTP_404_NOT_FOUND
         )
@@ -579,13 +611,16 @@ def enviar_solicitud_amistad(request):
 
     destinatario = User.objects.filter(
         id=destinatario_id,
-        perfil__rol=Perfil.Rol.JUGADOR
+        perfil__rol__in=[
+            Perfil.Rol.JUGADOR,
+            Perfil.Rol.DUENO_CANCHA,
+        ]
     ).first()
 
     if destinatario is None:
         return Response(
             {
-                "mensaje": "Jugador no encontrado."
+                "mensaje": "Usuario no encontrado."
             },
             status=status.HTTP_404_NOT_FOUND
         )
@@ -749,6 +784,44 @@ def rechazar_solicitud_amistad(request, solicitud_id):
 
     return Response({
         "mensaje": "Solicitud rechazada."
+    })
+
+
+@api_view(["DELETE"])
+def cancelar_solicitud_amistad(request, usuario_id):
+
+    # Distinto de eliminar_amigo: esto cancela una solicitud PROPIA
+    # que todavia esta pendiente, no borra una amistad ya aceptada.
+    solicitud = SolicitudAmistad.objects.filter(
+        remitente=request.user,
+        destinatario_id=usuario_id,
+        estado=SolicitudAmistad.Estado.PENDIENTE
+    ).first()
+
+    if solicitud is None:
+        return Response(
+            {
+                "mensaje": "No encontramos una solicitud pendiente para cancelar."
+            },
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    # La notificacion de "solicitud recibida" que le llego al
+    # destinatario queda invalida si la solicitud se cancela antes de
+    # que la responda; se borra (leida o no) usando la referencia real
+    # a la solicitud (Notificacion.solicitud_amistad), no comparando
+    # texto. Si despues se vuelve a enviar, se crea una notificacion
+    # nueva en enviar_solicitud_amistad, sin relacion con esta.
+    Notificacion.objects.filter(
+        destinatario=solicitud.destinatario,
+        solicitud_amistad=solicitud,
+        tipo=Notificacion.Tipo.SOLICITUD_AMISTAD_RECIBIDA,
+    ).delete()
+
+    solicitud.delete()
+
+    return Response({
+        "mensaje": "Solicitud cancelada correctamente."
     })
 
 

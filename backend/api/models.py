@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 from django.db import models
 from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator, MaxValueValidator
@@ -513,6 +515,65 @@ class Notificacion(models.Model):
 
     def __str__(self):
         return f"{self.destinatario.username}: {self.mensaje}"
+
+
+def momento_partido(partido):
+    """Devuelve el datetime aware (inicio real) de un Partido,
+    combinando su fecha y hora con la timezone activa del proyecto.
+    Centraliza esta combinacion para que la notificacion de "falta 1
+    hora" y el calculo de "vencido" usen exactamente la misma
+    conversion."""
+
+    return timezone.make_aware(
+        datetime.combine(partido.fecha, partido.hora)
+    )
+
+
+def partido_esta_vencido(partido, minutos_de_gracia=1):
+    """True si ya paso mas de `minutos_de_gracia` desde el inicio real
+    del partido (usado para dejar de ofrecerlo en los listados)."""
+
+    limite = momento_partido(partido) + timedelta(
+        minutes=minutos_de_gracia
+    )
+
+    return timezone.now() >= limite
+
+
+def partidos_jugados_por_usuario(usuario_ids):
+    """Para cada id de usuario de `usuario_ids`, cuantos partidos
+    "jugo": ya llego su fecha/hora real de inicio (sin minuto de
+    gracia, a diferencia de partido_esta_vencido: aca interesa el
+    instante exacto del inicio, no cuando conviene dejar de ofrecerlo
+    en un listado) Y el partido llego a completar su cupo en ese
+    momento. Se calcula en vivo a partir de las participaciones
+    ACTUALES (ParticipacionPartido), no de un snapshot historico: ver
+    la nota sobre abandonar_partido en el informe de este bloque."""
+
+    ahora = timezone.now()
+
+    participaciones = ParticipacionPartido.objects.filter(
+        usuario_id__in=usuario_ids
+    ).select_related("partido").annotate(
+        cantidad_participantes=models.Count(
+            "partido__participaciones"
+        )
+    )
+
+    conteo = {usuario_id: 0 for usuario_id in usuario_ids}
+
+    for participacion in participaciones:
+        partido = participacion.partido
+
+        if ahora < momento_partido(partido):
+            continue
+
+        if participacion.cantidad_participantes < partido.cupo:
+            continue
+
+        conteo[participacion.usuario_id] += 1
+
+    return conteo
 
 
 def usuario_puede_gestionar_canchas(user):
