@@ -19,6 +19,7 @@ import UserCard from "../components/UserCard";
 import {
   getUsuarios,
   enviarSolicitudAmistad,
+  cancelarSolicitudAmistad,
   getSolicitudesAmistad,
   aceptarSolicitudAmistad,
   rechazarSolicitudAmistad,
@@ -63,7 +64,9 @@ const adaptarUsuario = (usuario) => ({
     usuario.bio ||
     "Sin biografía.",
 
-  matchesPlayed: 0,
+  matchesPlayed: Number(
+    usuario.partidos_jugados || 0
+  ),
 
   rating: Number(
     usuario.reputacion || 0
@@ -266,6 +269,41 @@ export default function Friends() {
     } catch (error) {
       console.error(
         "Error al enviar solicitud:",
+        error
+      );
+    }
+  };
+
+
+  const handleCancelRequest = async (user) => {
+    const token =
+      localStorage.getItem("token");
+
+    if (!token) {
+      return;
+    }
+
+    try {
+      await cancelarSolicitudAmistad(
+        token,
+        user.id
+      );
+
+      setPlayers(
+        (previousPlayers) =>
+          previousPlayers.map(
+            (player) =>
+              player.id === user.id
+                ? {
+                    ...player,
+                    friendshipStatus: "ninguna",
+                  }
+                : player
+          )
+      );
+    } catch (error) {
+      console.error(
+        "Error al cancelar la solicitud:",
         error
       );
     }
@@ -565,6 +603,9 @@ export default function Friends() {
                         }
                         onAdd={
                           handleAdd
+                        }
+                        onCancelRequest={
+                          handleCancelRequest
                         }
                         onViewProfile={
                           handleViewProfile

@@ -13,6 +13,7 @@ from .views import (
     solicitudes_amistad_recibidas,
     aceptar_solicitud_amistad,
     rechazar_solicitud_amistad,
+    cancelar_solicitud_amistad,
     amigos,
     eliminar_amigo,
     canchas,
@@ -70,6 +71,11 @@ urlpatterns = [
     path(
         "amistades/solicitudes/<int:solicitud_id>/rechazar/",
         rechazar_solicitud_amistad
+    ),
+
+    path(
+        "amistades/solicitudes/<int:usuario_id>/cancelar/",
+        cancelar_solicitud_amistad
     ),
 
     path(

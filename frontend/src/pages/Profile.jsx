@@ -18,6 +18,7 @@ import {
   ArrowLeft,
   UserPlus,
   Check,
+  X,
 } from "lucide-react";
 
 import Header from "../components/Header";
@@ -34,6 +35,7 @@ import {
   logoutUser,
   calificarUsuario,
   enviarSolicitudAmistad,
+  cancelarSolicitudAmistad,
 } from "../services/api.js";
 
 import { DEFAULT_AVATAR } from "../utils/avatar.js";
@@ -149,7 +151,9 @@ export default function Profile() {
             data.foto ||
             DEFAULT_AVATAR,
 
-          matchesPlayed: 0,
+          matchesPlayed: Number(
+            data.partidos_jugados || 0
+          ),
 
           rating: Number(
             data.reputacion || 0
@@ -282,6 +286,46 @@ export default function Profile() {
       setProfileError(
         error.data?.mensaje ||
           "No se pudo enviar la solicitud."
+      );
+    }
+  };
+
+  const handleCancelRequest = async () => {
+    if (
+      esPerfilPropio ||
+      estadoAmistad !== "enviada"
+    ) {
+      return;
+    }
+
+    const token =
+      localStorage.getItem("token");
+
+    if (!token) {
+      navigate("/login", {
+        replace: true,
+      });
+
+      return;
+    }
+
+    try {
+      await cancelarSolicitudAmistad(
+        token,
+        usuarioId
+      );
+
+      setEstadoAmistad("ninguna");
+      setProfileError("");
+    } catch (error) {
+      console.error(
+        "Error al cancelar la solicitud:",
+        error
+      );
+
+      setProfileError(
+        error.data?.mensaje ||
+          "No se pudo cancelar la solicitud."
       );
     }
   };
@@ -668,12 +712,16 @@ export default function Profile() {
               <button
                 type="button"
                 disabled={
-                  estadoAmistad !==
-                  "ninguna"
+                  estadoAmistad === "amigos" ||
+                  estadoAmistad === "recibida"
                 }
-                onClick={
-                  handleAddFriend
-                }
+                onClick={() => {
+                  if (estadoAmistad === "enviada") {
+                    handleCancelRequest();
+                  } else if (estadoAmistad === "ninguna") {
+                    handleAddFriend();
+                  }
+                }}
                 className={`
                   flex shrink-0 items-center gap-2
                   rounded-xl px-4 py-2.5
@@ -682,7 +730,9 @@ export default function Profile() {
                     estadoAmistad ===
                     "ninguna"
                       ? "bg-green-500 text-white hover:bg-green-600"
-                      : "cursor-default bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+                      : estadoAmistad === "enviada"
+                        ? "bg-amber-100 text-amber-700 hover:bg-red-100 hover:text-red-600 dark:bg-amber-500/15 dark:text-amber-400 dark:hover:bg-red-500/15 dark:hover:text-red-400"
+                        : "cursor-default bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
                   }
                 `}
               >
@@ -698,10 +748,10 @@ export default function Profile() {
                 ) : estadoAmistad ===
                   "enviada" ? (
                   <>
-                    <Check
+                    <X
                       size={18}
                     />
-                    Solicitud enviada
+                    Cancelar solicitud
                   </>
                 ) : estadoAmistad ===
                   "recibida" ? (

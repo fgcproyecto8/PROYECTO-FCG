@@ -224,6 +224,24 @@ export function rechazarSolicitudAmistad(
 }
 
 
+// CANCELAR SOLICITUD ENVIADA (propia, todavia pendiente)
+
+export function cancelarSolicitudAmistad(
+  token,
+  usuarioId
+) {
+  return request(
+    `/amistades/solicitudes/${usuarioId}/cancelar/`,
+    {
+      method: "DELETE",
+      headers: {
+        Authorization: `Token ${token}`,
+      },
+    }
+  );
+}
+
+
 // LISTA DE AMIGOS
 
 export function getAmigos(token) {

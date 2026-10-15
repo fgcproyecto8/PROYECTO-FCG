@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import time, timedelta
 
 from django.contrib.auth.models import User
 from django.test import TestCase
@@ -189,7 +189,7 @@ class AutenticacionTests(TestCase):
 
     def test_login_no_requiere_token(self):
         respuesta = self.client.post("/api/login/", {
-            "email": self.usuario.email,
+            "identificador": self.usuario.email,
             "password": "clave-segura-123",
         })
 
@@ -229,6 +229,10 @@ class AutenticacionTests(TestCase):
             ("post", "/api/amistades/solicitudes/enviar/"),
             ("post", "/api/amistades/solicitudes/1/aceptar/"),
             ("post", "/api/amistades/solicitudes/1/rechazar/"),
+            (
+                "delete",
+                f"/api/amistades/solicitudes/{self.otro_usuario.id}/cancelar/",
+            ),
             ("delete", f"/api/amistades/{self.otro_usuario.id}/"),
         ]
 
@@ -299,6 +303,552 @@ class AutenticacionTests(TestCase):
             respuesta_me.data["solicitud_dueno"]["puede_gestionar_canchas"],
             False,
         )
+
+
+class LoginIdentificadorTests(TestCase):
+    """Login con nombre de usuario O email, manteniendo token y
+    mensajes de error claros, y sin elegir una cuenta al azar si el
+    email estuviera duplicado."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.usuario = crear_jugador("login_usuario")
+
+    def test_login_con_username(self):
+        respuesta = self.client.post("/api/login/", {
+            "identificador": "login_usuario",
+            "password": "clave-segura-123",
+        })
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertIn("token", respuesta.data)
+
+    def test_login_con_username_mayusculas(self):
+        respuesta = self.client.post("/api/login/", {
+            "identificador": "LOGIN_USUARIO",
+            "password": "clave-segura-123",
+        })
+
+        self.assertEqual(respuesta.status_code, 200)
+
+    def test_login_con_email(self):
+        respuesta = self.client.post("/api/login/", {
+            "identificador": "login_usuario@example.com",
+            "password": "clave-segura-123",
+        })
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertIn("token", respuesta.data)
+
+    def test_login_con_identificador_inexistente(self):
+        respuesta = self.client.post("/api/login/", {
+            "identificador": "no_existe",
+            "password": "clave-segura-123",
+        })
+
+        self.assertEqual(respuesta.status_code, 401)
+
+    def test_login_con_password_incorrecta(self):
+        respuesta = self.client.post("/api/login/", {
+            "identificador": "login_usuario",
+            "password": "clave-incorrecta",
+        })
+
+        self.assertEqual(respuesta.status_code, 401)
+
+    def test_login_con_email_duplicado_no_elige_una_cuenta_al_azar(self):
+        # Simula una colision de emails preexistente (el modelo User de
+        # Django no obliga unicidad a nivel de base de datos): el login
+        # por email no debe autenticar a ninguna de las dos cuentas.
+        otro_usuario = User.objects.create_user(
+            username="login_usuario_2",
+            email="login_usuario@example.com",
+            password="otra-clave-456",
+        )
+
+        Perfil.objects.create(
+            usuario=otro_usuario,
+            rol=Perfil.Rol.JUGADOR,
+        )
+
+        respuesta = self.client.post("/api/login/", {
+            "identificador": "login_usuario@example.com",
+            "password": "clave-segura-123",
+        })
+
+        self.assertEqual(respuesta.status_code, 401)
+
+    def test_login_requiere_identificador_y_password(self):
+        respuesta = self.client.post("/api/login/", {
+            "password": "clave-segura-123",
+        })
+
+        self.assertEqual(respuesta.status_code, 400)
+
+
+class AmistadTests(TestCase):
+    """Los duenos de cancha aparecen en la busqueda de usuarios y
+    pueden recibir solicitudes de amistad igual que los jugadores;
+    cancelar una solicitud propia pendiente no debe confundirse con
+    eliminar una amistad ya aceptada."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.jugador = crear_jugador("amistad_jugador")
+        self.otro_jugador = crear_jugador("amistad_otro_jugador")
+
+        self.dueno = crear_dueno(
+            "amistad_dueno", SolicitudDueno.Estado.APROBADA
+        )
+
+    def test_dueno_aparece_en_busqueda_de_usuarios(self):
+        self.client.force_authenticate(user=self.jugador)
+
+        respuesta = self.client.get("/api/usuarios/")
+        self.assertEqual(respuesta.status_code, 200)
+
+        ids = [fila["id"] for fila in respuesta.data]
+        self.assertIn(self.dueno.id, ids)
+
+    def test_dueno_visible_en_detalle_de_usuario(self):
+        self.client.force_authenticate(user=self.jugador)
+
+        respuesta = self.client.get(f"/api/usuarios/{self.dueno.id}/")
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.data["id"], self.dueno.id)
+
+    def test_se_puede_enviar_solicitud_a_un_dueno(self):
+        self.client.force_authenticate(user=self.jugador)
+
+        respuesta = self.client.post(
+            "/api/amistades/solicitudes/enviar/",
+            {"destinatario_id": self.dueno.id},
+        )
+
+        self.assertEqual(respuesta.status_code, 201)
+        self.assertTrue(
+            SolicitudAmistad.objects.filter(
+                remitente=self.jugador,
+                destinatario=self.dueno,
+                estado=SolicitudAmistad.Estado.PENDIENTE,
+            ).exists()
+        )
+
+    def test_cancelar_solicitud_propia_pendiente(self):
+        self.client.force_authenticate(user=self.jugador)
+
+        self.client.post(
+            "/api/amistades/solicitudes/enviar/",
+            {"destinatario_id": self.otro_jugador.id},
+        )
+
+        respuesta = self.client.delete(
+            f"/api/amistades/solicitudes/{self.otro_jugador.id}/cancelar/"
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertFalse(
+            SolicitudAmistad.objects.filter(
+                remitente=self.jugador,
+                destinatario=self.otro_jugador,
+            ).exists()
+        )
+
+    def test_no_puede_cancelar_solicitud_que_no_envio(self):
+        # otro_jugador es quien recibe, no quien envia: no puede
+        # "cancelar" (esa accion es rechazar, un endpoint distinto).
+        SolicitudAmistad.objects.create(
+            remitente=self.jugador,
+            destinatario=self.otro_jugador,
+        )
+
+        self.client.force_authenticate(user=self.otro_jugador)
+
+        respuesta = self.client.delete(
+            f"/api/amistades/solicitudes/{self.jugador.id}/cancelar/"
+        )
+
+        self.assertEqual(respuesta.status_code, 404)
+        self.assertTrue(
+            SolicitudAmistad.objects.filter(
+                remitente=self.jugador,
+                destinatario=self.otro_jugador,
+                estado=SolicitudAmistad.Estado.PENDIENTE,
+            ).exists()
+        )
+
+    def test_cancelar_no_afecta_una_amistad_ya_aceptada(self):
+        SolicitudAmistad.objects.create(
+            remitente=self.jugador,
+            destinatario=self.otro_jugador,
+            estado=SolicitudAmistad.Estado.ACEPTADA,
+        )
+
+        self.client.force_authenticate(user=self.jugador)
+
+        respuesta = self.client.delete(
+            f"/api/amistades/solicitudes/{self.otro_jugador.id}/cancelar/"
+        )
+
+        self.assertEqual(respuesta.status_code, 404)
+        self.assertTrue(
+            SolicitudAmistad.objects.filter(
+                remitente=self.jugador,
+                destinatario=self.otro_jugador,
+                estado=SolicitudAmistad.Estado.ACEPTADA,
+            ).exists()
+        )
+
+    # --- Cancelar borra la notificacion asociada (backend, no solo UI) ---
+
+    def test_cancelar_solicitud_elimina_la_notificacion_del_destinatario(
+        self,
+    ):
+        self.client.force_authenticate(user=self.jugador)
+
+        self.client.post(
+            "/api/amistades/solicitudes/enviar/",
+            {"destinatario_id": self.otro_jugador.id},
+        )
+
+        self.assertTrue(
+            Notificacion.objects.filter(
+                destinatario=self.otro_jugador,
+                tipo=Notificacion.Tipo.SOLICITUD_AMISTAD_RECIBIDA,
+            ).exists()
+        )
+
+        self.client.delete(
+            f"/api/amistades/solicitudes/{self.otro_jugador.id}/cancelar/"
+        )
+
+        self.assertFalse(
+            Notificacion.objects.filter(
+                destinatario=self.otro_jugador,
+                tipo=Notificacion.Tipo.SOLICITUD_AMISTAD_RECIBIDA,
+            ).exists()
+        )
+
+    def test_cancelar_elimina_la_notificacion_aunque_ya_este_leida(self):
+        self.client.force_authenticate(user=self.jugador)
+
+        self.client.post(
+            "/api/amistades/solicitudes/enviar/",
+            {"destinatario_id": self.otro_jugador.id},
+        )
+
+        notificacion = Notificacion.objects.get(
+            destinatario=self.otro_jugador,
+            tipo=Notificacion.Tipo.SOLICITUD_AMISTAD_RECIBIDA,
+        )
+        notificacion.leida = True
+        notificacion.save(update_fields=["leida"])
+
+        self.client.delete(
+            f"/api/amistades/solicitudes/{self.otro_jugador.id}/cancelar/"
+        )
+
+        self.assertFalse(
+            Notificacion.objects.filter(id=notificacion.id).exists()
+        )
+
+    def test_cancelar_no_borra_notificaciones_de_otras_solicitudes(self):
+        tercer_jugador = crear_jugador("amistad_tercero")
+
+        self.client.force_authenticate(user=self.jugador)
+
+        self.client.post(
+            "/api/amistades/solicitudes/enviar/",
+            {"destinatario_id": self.otro_jugador.id},
+        )
+        self.client.post(
+            "/api/amistades/solicitudes/enviar/",
+            {"destinatario_id": tercer_jugador.id},
+        )
+
+        self.client.delete(
+            f"/api/amistades/solicitudes/{self.otro_jugador.id}/cancelar/"
+        )
+
+        self.assertFalse(
+            Notificacion.objects.filter(
+                destinatario=self.otro_jugador
+            ).exists()
+        )
+        self.assertTrue(
+            Notificacion.objects.filter(
+                destinatario=tercer_jugador,
+                tipo=Notificacion.Tipo.SOLICITUD_AMISTAD_RECIBIDA,
+            ).exists()
+        )
+
+    def test_reenviar_solicitud_despues_de_cancelar_genera_notificacion_nueva(
+        self,
+    ):
+        self.client.force_authenticate(user=self.jugador)
+
+        self.client.post(
+            "/api/amistades/solicitudes/enviar/",
+            {"destinatario_id": self.otro_jugador.id},
+        )
+        self.client.delete(
+            f"/api/amistades/solicitudes/{self.otro_jugador.id}/cancelar/"
+        )
+        self.client.post(
+            "/api/amistades/solicitudes/enviar/",
+            {"destinatario_id": self.otro_jugador.id},
+        )
+
+        self.assertEqual(
+            Notificacion.objects.filter(
+                destinatario=self.otro_jugador,
+                tipo=Notificacion.Tipo.SOLICITUD_AMISTAD_RECIBIDA,
+            ).count(),
+            1,
+        )
+
+
+class CalificacionUsuarioTests(TestCase):
+    """calificar_usuario ahora acepta tanto jugadores como duenos de
+    cancha como evaluado, sin tocar las validaciones existentes
+    (autocalificacion, duplicados via update_or_create, rango 1-5)."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.jugador = crear_jugador("calif_jugador")
+        self.otro_jugador = crear_jugador("calif_otro_jugador")
+
+        self.dueno = crear_dueno(
+            "calif_dueno", SolicitudDueno.Estado.APROBADA
+        )
+
+    def test_puede_calificar_a_un_jugador(self):
+        self.client.force_authenticate(user=self.jugador)
+
+        respuesta = self.client.post(
+            f"/api/usuarios/{self.otro_jugador.id}/calificar/",
+            {"valor": 4},
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.data["mi_calificacion"], 4)
+
+    def test_puede_calificar_a_un_dueno_de_cancha(self):
+        self.client.force_authenticate(user=self.jugador)
+
+        respuesta = self.client.post(
+            f"/api/usuarios/{self.dueno.id}/calificar/",
+            {"valor": 5},
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.data["mi_calificacion"], 5)
+        self.assertEqual(respuesta.data["reputacion"], 5.0)
+
+        self.assertTrue(
+            CalificacionUsuario.objects.filter(
+                evaluador=self.jugador,
+                evaluado=self.dueno,
+                valor=5,
+            ).exists()
+        )
+
+    def test_no_puede_calificarse_a_si_mismo_siendo_dueno(self):
+        self.client.force_authenticate(user=self.dueno)
+
+        respuesta = self.client.post(
+            f"/api/usuarios/{self.dueno.id}/calificar/",
+            {"valor": 5},
+        )
+
+        self.assertEqual(respuesta.status_code, 400)
+
+    def test_calificar_de_nuevo_actualiza_en_vez_de_duplicar(self):
+        self.client.force_authenticate(user=self.jugador)
+
+        self.client.post(
+            f"/api/usuarios/{self.dueno.id}/calificar/",
+            {"valor": 2},
+        )
+        respuesta = self.client.post(
+            f"/api/usuarios/{self.dueno.id}/calificar/",
+            {"valor": 4},
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.data["mi_calificacion"], 4)
+        self.assertEqual(respuesta.data["cantidad_calificaciones"], 1)
+
+        self.assertEqual(
+            CalificacionUsuario.objects.filter(
+                evaluador=self.jugador, evaluado=self.dueno
+            ).count(),
+            1,
+        )
+
+    def test_dueno_muestra_reputacion_en_su_perfil_publico(self):
+        self.client.force_authenticate(user=self.jugador)
+
+        self.client.post(
+            f"/api/usuarios/{self.dueno.id}/calificar/",
+            {"valor": 3},
+        )
+
+        respuesta = self.client.get(f"/api/usuarios/{self.dueno.id}/")
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.data["reputacion"], 3.0)
+        self.assertEqual(respuesta.data["cantidad_calificaciones"], 1)
+
+
+class PartidosJugadosTests(TestCase):
+    """partidos_jugados: antes estaba hardcodeado en 0 en el frontend
+    (no existia ningun calculo real). La regla: un partido cuenta como
+    jugado cuando ya llego su fecha/hora de inicio Y llego a completar
+    su cupo; se cuenta una sola vez por usuario participante."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.jugador1 = crear_jugador("pj_jugador1")
+        self.jugador2 = crear_jugador("pj_jugador2")
+
+        self.dueno = crear_dueno(
+            "pj_dueno", SolicitudDueno.Estado.APROBADA
+        )
+
+        self.cancha = Cancha.objects.create(
+            dueno=self.dueno,
+            nombre="Cancha Partidos Jugados Test",
+            tipo=Cancha.Tipo.FUTBOL_5,
+            direccion="Calle PJ 1",
+            telefono="3333333",
+            precio=10000,
+        )
+
+    def _crear_partido(self, nombre, fecha, hora, cupo):
+        return Partido.objects.create(
+            creador=self.jugador1,
+            cancha=self.cancha,
+            nombre=nombre,
+            fecha=fecha,
+            hora=hora,
+            cupo=cupo,
+        )
+
+    def test_no_cuenta_partido_futuro_aunque_este_completo(self):
+        manana = timezone.localdate() + timedelta(days=1)
+
+        partido = self._crear_partido(
+            "PJ Futuro Completo", manana, time(20, 0), cupo=2
+        )
+        ParticipacionPartido.objects.create(
+            partido=partido, usuario=self.jugador1
+        )
+        ParticipacionPartido.objects.create(
+            partido=partido, usuario=self.jugador2
+        )
+
+        self.client.force_authenticate(user=self.jugador1)
+        respuesta = self.client.get("/api/me/")
+
+        self.assertEqual(respuesta.data["partidos_jugados"], 0)
+
+    def test_no_cuenta_partido_que_empezo_incompleto(self):
+        ayer = timezone.localdate() - timedelta(days=1)
+
+        partido = self._crear_partido(
+            "PJ Pasado Incompleto", ayer, time(20, 0), cupo=2
+        )
+        ParticipacionPartido.objects.create(
+            partido=partido, usuario=self.jugador1
+        )
+
+        self.client.force_authenticate(user=self.jugador1)
+        respuesta = self.client.get("/api/me/")
+
+        self.assertEqual(respuesta.data["partidos_jugados"], 0)
+
+    def test_cuenta_partido_pasado_y_completo(self):
+        ayer = timezone.localdate() - timedelta(days=1)
+
+        partido = self._crear_partido(
+            "PJ Pasado Completo", ayer, time(20, 0), cupo=2
+        )
+        ParticipacionPartido.objects.create(
+            partido=partido, usuario=self.jugador1
+        )
+        ParticipacionPartido.objects.create(
+            partido=partido, usuario=self.jugador2
+        )
+
+        self.client.force_authenticate(user=self.jugador1)
+        respuesta = self.client.get("/api/me/")
+
+        self.assertEqual(respuesta.data["partidos_jugados"], 1)
+
+        # Mismo resultado visto desde el perfil publico del otro
+        # participante (consistencia propio vs. publico).
+        self.client.force_authenticate(user=self.jugador2)
+        respuesta_publica = self.client.get(
+            f"/api/usuarios/{self.jugador1.id}/"
+        )
+
+        self.assertEqual(respuesta_publica.data["partidos_jugados"], 1)
+
+    def test_no_duplica_conteo_ni_cuenta_partidos_de_otros_usuarios(self):
+        ayer = timezone.localdate() - timedelta(days=1)
+
+        partido1 = self._crear_partido(
+            "PJ Uno", ayer, time(10, 0), cupo=2
+        )
+        ParticipacionPartido.objects.create(
+            partido=partido1, usuario=self.jugador1
+        )
+        ParticipacionPartido.objects.create(
+            partido=partido1, usuario=self.jugador2
+        )
+
+        # cupo=1: le alcanza a jugador2 solo para completarlo.
+        partido2 = self._crear_partido(
+            "PJ Dos", ayer, time(12, 0), cupo=1
+        )
+        ParticipacionPartido.objects.create(
+            partido=partido2, usuario=self.jugador2
+        )
+        # jugador1 no participa de partido2.
+
+        self.client.force_authenticate(user=self.jugador1)
+        respuesta1 = self.client.get("/api/me/")
+        self.assertEqual(respuesta1.data["partidos_jugados"], 1)
+
+        self.client.force_authenticate(user=self.jugador2)
+        respuesta2 = self.client.get("/api/me/")
+        self.assertEqual(respuesta2.data["partidos_jugados"], 2)
+
+    def test_abandonar_despues_de_jugado_deja_de_contarlo(self):
+        # Documenta una limitacion conocida (sin snapshot historico):
+        # si el ultimo participante abandona un partido ya jugado, deja
+        # de contarse. Ver alternativas en el informe de este bloque.
+        ayer = timezone.localdate() - timedelta(days=1)
+
+        partido = self._crear_partido(
+            "PJ Abandonado", ayer, time(20, 0), cupo=2
+        )
+        ParticipacionPartido.objects.create(
+            partido=partido, usuario=self.jugador1
+        )
+        ParticipacionPartido.objects.create(
+            partido=partido, usuario=self.jugador2
+        )
+
+        self.client.force_authenticate(user=self.jugador1)
+        respuesta_antes = self.client.get("/api/me/")
+        self.assertEqual(respuesta_antes.data["partidos_jugados"], 1)
+
+        self.client.post(f"/api/partidos/{partido.id}/abandonar/")
+
+        respuesta_despues = self.client.get("/api/me/")
+        self.assertEqual(respuesta_despues.data["partidos_jugados"], 0)
 
 
 class CanchaTests(TestCase):
@@ -1066,6 +1616,51 @@ class PartidoTests(TestCase):
                 partido_id=creado["id"], usuario=self.jugador2
             ).exists()
         )
+
+    # --- Vencido (deja de "ofrecerse" 1 minuto despues de empezar) ---
+
+    def test_vencido_false_para_partido_futuro(self):
+        self.client.force_authenticate(user=self.creador)
+
+        manana = (
+            timezone.localdate() + timedelta(days=1)
+        ).isoformat()
+
+        respuesta = self.client.post(
+            "/api/partidos/",
+            self._datos_partido(
+                nombre="Partido Futuro Vencido Test",
+                fecha=manana,
+            ),
+        )
+
+        self.assertEqual(respuesta.status_code, 201)
+        self.assertFalse(respuesta.data["vencido"])
+
+    def test_vencido_true_para_partido_que_ya_empezo(self):
+        self.client.force_authenticate(user=self.creador)
+
+        ayer = (
+            timezone.localdate() - timedelta(days=1)
+        ).isoformat()
+
+        respuesta = self.client.post(
+            "/api/partidos/",
+            self._datos_partido(
+                nombre="Partido Ya Vencido Test",
+                fecha=ayer,
+            ),
+        )
+
+        self.assertEqual(respuesta.status_code, 201)
+        self.assertTrue(respuesta.data["vencido"])
+
+        # Tambien debe verse vencido al listar, no solo al crear.
+        listado = self.client.get("/api/partidos/")
+        creado = next(
+            p for p in listado.data if p["id"] == respuesta.data["id"]
+        )
+        self.assertTrue(creado["vencido"])
 
     def test_endpoints_de_partidos_requieren_token(self):
         id_inexistente = 99999

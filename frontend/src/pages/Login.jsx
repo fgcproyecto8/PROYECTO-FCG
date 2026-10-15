@@ -13,7 +13,7 @@ import { mapearErroresDeCampos } from "../utils/apiErrors.js";
 
 export default function Login() {
   const [form, setForm] = useState({
-    email: "",
+    identificador: "",
     password: "",
   });
 
@@ -42,8 +42,8 @@ export default function Login() {
   const validate = () => {
     const e = {};
 
-    if (!form.email.includes("@")) {
-      e.email = 'El email debe contener "@"';
+    if (!form.identificador.trim()) {
+      e.identificador = "Ingresá tu usuario o email";
     }
 
     if (form.password.length === 0) {
@@ -70,7 +70,7 @@ export default function Login() {
       setLoading(true);
 
       const data = await loginUser({
-        email: form.email.trim(),
+        identificador: form.identificador.trim(),
         password: form.password,
       });
 
@@ -104,7 +104,7 @@ export default function Login() {
       const backendErrors = error.data || {};
 
       const nuevosErrores = mapearErroresDeCampos(backendErrors, {
-        email: "email",
+        identificador: "identificador",
         password: "password",
       });
 
@@ -151,14 +151,14 @@ export default function Login() {
             className="space-y-4"
           >
             <Input
-              label="Email"
-              name="email"
-              type="email"
-              placeholder="tu@email.com"
-              value={form.email}
+              label="Usuario o email"
+              name="identificador"
+              type="text"
+              placeholder="Tu usuario o tu@email.com"
+              value={form.identificador}
               onChange={onChange}
-              error={errors.email}
-              autoComplete="email"
+              error={errors.identificador}
+              autoComplete="username"
             />
 
             <Input
