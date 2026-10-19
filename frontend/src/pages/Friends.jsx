@@ -447,12 +447,12 @@ export default function Friends() {
         </Link>
 
 
-        <h1 className="mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl">
+        <h1 className="mt-3 page-title">
           Amigos
         </h1>
 
 
-        <p className="mt-1 text-sm text-gray-600 sm:text-base dark:text-gray-400">
+        <p className="mt-1 page-subtitle">
           Encontrá jugadores, administrá tus solicitudes y conectate con otros usuarios.
         </p>
 
@@ -548,7 +548,7 @@ export default function Friends() {
               </form>
 
 
-              <h2 className="mt-6 text-lg font-bold">
+              <h2 className="mt-6 subsection-title">
                 Jugadores encontrados
               </h2>
 

@@ -29,7 +29,7 @@ export default function FieldCard({
 
         <div className="absolute right-3 top-3">
           <RatingBadge
-            canchaId={field.id}
+            promedio={field.rating}
           />
         </div>
       </div>

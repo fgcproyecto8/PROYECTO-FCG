@@ -20,17 +20,6 @@ import {
 import ImageUploader from "../components/ImageUploader";
 import HorarioChips from "../components/HorarioChips";
 
-import {
-  obtenerHorariosMock,
-  guardarHorariosMock,
-} from "../data/horariosMock";
-
-import {
-  guardarCalificacion,
-  obtenerCalificacionUsuario,
-  obtenerPromedioCancha,
-} from "../data/calificaciones";
-
 import { getAuthUser } from "../utils/authUser";
 
 import {
@@ -38,6 +27,8 @@ import {
   crearCancha,
   actualizarCancha,
   eliminarCancha,
+  guardarHorariosCancha,
+  calificarCancha,
 } from "../services/api.js";
 
 
@@ -50,6 +41,21 @@ const CANCHA_VACIA = {
   imagen: "",
 };
 
+const DIAS_SEMANA = [
+  { clave: "lunes", titulo: "LUNES" },
+  { clave: "martes", titulo: "MARTES" },
+  { clave: "miercoles", titulo: "MIÉRCOLES" },
+  { clave: "jueves", titulo: "JUEVES" },
+  { clave: "viernes", titulo: "VIERNES" },
+  { clave: "sabado", titulo: "SÁBADO" },
+  { clave: "domingo", titulo: "DOMINGO" },
+];
+
+const AGENDA_VACIA = DIAS_SEMANA.reduce(
+  (acumulador, { clave }) => ({ ...acumulador, [clave]: [] }),
+  {}
+);
+
 
 export default function CanchaForm() {
   const { id } = useParams();
@@ -58,7 +64,6 @@ export default function CanchaForm() {
   const {
     esAdmin,
     esJugador,
-    emailUsuario,
     puedeGestionarCanchas: puedeGestionar,
   } = getAuthUser();
 
@@ -67,7 +72,12 @@ export default function CanchaForm() {
 
   const [form, setForm] = useState(CANCHA_VACIA);
 
-  const [horarios, setHorarios] = useState({
+  const [horarios, setHorarios] = useState(AGENDA_VACIA);
+
+  // Resumen hoy/manana: lo unico que ve un usuario que no es dueño
+  // de esta cancha (ver puedeEditar mas abajo). El backend ya no le
+  // manda la agenda_semanal completa en ese caso.
+  const [horariosHoyManana, setHorariosHoyManana] = useState({
     hoy: [],
     manana: [],
   });
@@ -133,16 +143,17 @@ export default function CanchaForm() {
           imagen: data.imagen || "",
         });
 
-        setHorarios(obtenerHorariosMock(id));
+        setHorarios(
+          data.agenda_semanal || AGENDA_VACIA
+        );
+        setHorariosHoyManana(
+          data.horarios || { hoy: [], manana: [] }
+        );
         setEsPropietario(Boolean(data.puede_editar));
 
-        setCalificacionUsuario(
-          emailUsuario
-            ? obtenerCalificacionUsuario(id, emailUsuario)
-            : 0
-        );
+        setCalificacionUsuario(data.mi_calificacion || 0);
 
-        setPromedio(obtenerPromedioCancha(id));
+        setPromedio(data.promedio_calificacion);
       } catch (err) {
         if (!activo) return;
 
@@ -276,28 +287,50 @@ export default function CanchaForm() {
   };
 
 
-  const handleCalificar = (
+  const handleCalificar = async (
     valor
   ) => {
     if (
       !esJugador ||
-      !id ||
-      !emailUsuario
+      !id
     ) {
       return;
     }
 
-    guardarCalificacion(
-      id,
-      emailUsuario,
-      valor
-    );
+    const token = localStorage.getItem("token");
 
-    setCalificacionUsuario(valor);
+    if (!token) {
+      navigate("/login", {
+        replace: true,
+      });
 
-    setPromedio(
-      obtenerPromedioCancha(id)
-    );
+      return;
+    }
+
+    try {
+      const respuesta = await calificarCancha(
+        token,
+        id,
+        valor
+      );
+
+      // Solo se actualiza con lo que confirma el servidor: un error
+      // de red no debe dejar la pantalla mostrando una calificacion
+      // o un promedio que en realidad no se guardaron.
+      setCalificacionUsuario(respuesta.mi_calificacion);
+      setPromedio(respuesta.promedio);
+      setError("");
+    } catch (err) {
+      console.error(
+        "Error al calificar la cancha:",
+        err
+      );
+
+      setError(
+        err.message ||
+          "No se pudo guardar la calificación."
+      );
+    }
   };
 
 
@@ -338,7 +371,36 @@ export default function CanchaForm() {
         ? await crearCancha(token, datos)
         : await actualizarCancha(token, id, datos);
 
-      guardarHorariosMock(canchaGuardada.id, horarios);
+      try {
+        await guardarHorariosCancha(
+          token,
+          canchaGuardada.id,
+          horarios
+        );
+      } catch (errorHorarios) {
+        console.error(
+          "Error al guardar los horarios:",
+          errorHorarios
+        );
+
+        setError(
+          "La cancha se guardó, pero no se pudieron guardar los horarios. Volvé a intentarlo."
+        );
+
+        setGuardando(false);
+
+        // Si la cancha se creo recien, hay que seguir editando ESA
+        // cancha (no la pantalla de "nueva"): si no, un segundo
+        // intento volveria a crear otra cancha duplicada.
+        if (esNueva) {
+          navigate(
+            `/canchas/${canchaGuardada.id}/editar`,
+            { replace: true }
+          );
+        }
+
+        return;
+      }
 
       navigate("/canchas");
     } catch (err) {
@@ -434,7 +496,7 @@ export default function CanchaForm() {
         onSubmit={handleSubmit}
         className="mx-auto w-full max-w-xl"
       >
-        <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white">
+        <h1 className="page-title">
           {esNueva
             ? "Agregar Cancha"
             : puedeEditar
@@ -442,7 +504,7 @@ export default function CanchaForm() {
               : "Detalles de la Cancha"}
         </h1>
 
-        <p className="mb-5 text-xs text-slate-500 dark:text-slate-400">
+        <p className="mb-5 mt-1 page-subtitle">
           {puedeEditar
             ? esNueva
               ? "Completa los datos de tu cancha."
@@ -545,53 +607,58 @@ export default function CanchaForm() {
         </div>
 
 
-        <h2 className="mt-6 text-lg font-extrabold text-slate-900 dark:text-white">
-          Horarios Disponibles
+        <h2 className="mt-6 subsection-title">
+          {puedeEditar ? "Agenda Semanal" : "Horarios"}
         </h2>
 
         <p className="mb-4 text-xs text-slate-500 dark:text-slate-400">
           {puedeEditar
-            ? "Tocá para activar o desactivar horas. También podés agregar nuevos horarios con el botón +."
-            : "Horarios disponibles de la cancha."}
+            ? "Elegí que horas ofrece tu cancha cada día de la semana. Tocá para activar o desactivar, o agregá un horario nuevo con el botón +."
+            : "Horarios disponibles para hoy y mañana."}
         </p>
 
 
-        <HorarioChips
-          titulo="HOY"
-          seleccionados={
-            horarios.hoy
-          }
-          onToggle={toggleHorario(
-            "hoy"
-          )}
-          onAgregar={agregarHorario(
-            "hoy"
-          )}
-          editable={
-            puedeEditar
-          }
-        />
+        {puedeEditar ? (
+          DIAS_SEMANA.map(({ clave, titulo }) => (
+            <HorarioChips
+              key={clave}
+              titulo={titulo}
+              seleccionados={
+                horarios[clave] || []
+              }
+              onToggle={toggleHorario(
+                clave
+              )}
+              onAgregar={agregarHorario(
+                clave
+              )}
+              editable
+            />
+          ))
+        ) : (
+          <>
+            <HorarioChips
+              titulo="HOY"
+              seleccionados={horariosHoyManana.hoy}
+              onToggle={() => {}}
+              onAgregar={() => {}}
+              editable={false}
+            />
 
-        <HorarioChips
-          titulo="MAÑANA"
-          seleccionados={
-            horarios.manana
-          }
-          onToggle={toggleHorario(
-            "manana"
-          )}
-          onAgregar={agregarHorario(
-            "manana"
-          )}
-          editable={
-            puedeEditar
-          }
-        />
+            <HorarioChips
+              titulo="MAÑANA"
+              seleccionados={horariosHoyManana.manana}
+              onToggle={() => {}}
+              onAgregar={() => {}}
+              editable={false}
+            />
+          </>
+        )}
 
 
         {!esNueva && (
           <div className="mt-8 border-t border-slate-200 pt-6 dark:border-slate-800">
-            <h2 className="text-lg font-extrabold text-slate-900 dark:text-white">
+            <h2 className="subsection-title">
               Calificación
             </h2>
 

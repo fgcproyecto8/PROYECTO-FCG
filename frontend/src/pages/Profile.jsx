@@ -604,13 +604,13 @@ export default function Profile() {
 
         <div className="mb-7">
 
-          <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
+          <h1 className="page-title">
             {esPerfilPropio
               ? "Mi perfil"
               : "Perfil de jugador"}
           </h1>
 
-          <p className="mt-2 text-sm text-slate-600 dark:text-neutral-400 sm:text-base">
+          <p className="mt-2 page-subtitle">
             {esPerfilPropio
               ? "Administra tu información personal, estadísticas y preferencias."
               : "Información pública del jugador."}
@@ -663,7 +663,7 @@ export default function Profile() {
 
             <div>
 
-              <h2 className="text-lg font-bold text-slate-900 dark:text-neutral-100">
+              <h2 className="subsection-title">
                 Perfil de jugador
               </h2>
 

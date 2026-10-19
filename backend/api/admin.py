@@ -3,6 +3,8 @@ from django.utils import timezone
 
 from .models import (
     Cancha,
+    CalificacionCancha,
+    HorarioCancha,
     InvitacionPartido,
     Notificacion,
     ParticipacionPartido,
@@ -107,6 +109,38 @@ class CanchaAdmin(admin.ModelAdmin):
         "direccion",
         "dueno__username",
         "dueno__email",
+    )
+
+
+@admin.register(HorarioCancha)
+class HorarioCanchaAdmin(admin.ModelAdmin):
+    list_display = (
+        "cancha",
+        "dia_semana",
+        "hora",
+    )
+
+    list_filter = (
+        "dia_semana",
+    )
+
+    search_fields = (
+        "cancha__nombre",
+    )
+
+
+@admin.register(CalificacionCancha)
+class CalificacionCanchaAdmin(admin.ModelAdmin):
+    list_display = (
+        "cancha",
+        "evaluador",
+        "valor",
+        "fecha_actualizacion",
+    )
+
+    search_fields = (
+        "cancha__nombre",
+        "evaluador__username",
     )
 
 

@@ -15,6 +15,8 @@ from rest_framework import status
 
 from .models import (
     Cancha,
+    CalificacionCancha,
+    HorarioCancha,
     Notificacion,
     Partido,
     ParticipacionPartido,
@@ -35,6 +37,8 @@ from .serializers import (
     PerfilUpdateSerializer,
     UsuarioPublicoSerializer,
     CanchaSerializer,
+    AgendaSemanalCanchaSerializer,
+    DIAS_SEMANA_CLAVES,
     PartidoSerializer,
     InvitarAPartidoSerializer,
     InvitacionPartidoSerializer,
@@ -898,16 +902,23 @@ def partidos(request):
 
     if request.method == "GET":
 
-        listado = Partido.objects.select_related(
-            "cancha", "creador"
-        ).prefetch_related(
-            "participaciones__usuario"
+        listado = list(
+            Partido.objects.select_related(
+                "cancha", "creador"
+            ).prefetch_related(
+                "participaciones__usuario"
+            )
         )
+
+        cancha_ids = {partido.cancha_id for partido in listado}
 
         serializer = PartidoSerializer(
             listado,
             many=True,
-            context={"request": request}
+            context={
+                "request": request,
+                "cancha_promedios": _promedios_por_cancha(cancha_ids),
+            }
         )
 
         return Response(serializer.data)
@@ -1328,19 +1339,68 @@ def rechazar_invitacion_partido(request, invitacion_id):
     })
 
 
+def _promedios_por_cancha(cancha_ids):
+    """Promedio y cantidad de CalificacionCancha por cancha, en lote."""
+
+    return {
+        fila["cancha"]: {
+            "promedio": (
+                round(float(fila["promedio"]), 1)
+                if fila["promedio"] is not None
+                else None
+            ),
+            "cantidad": fila["cantidad"],
+        }
+        for fila in CalificacionCancha.objects.filter(
+            cancha_id__in=cancha_ids
+        ).values("cancha").annotate(
+            promedio=Avg("valor"),
+            cantidad=Count("id"),
+        )
+    }
+
+
+def _contexto_canchas(request, canchas):
+    """Precalcula promedio/cantidad/mi_calificacion de calificaciones
+    de cancha en lote, evitando N+1 en CanchaSerializer al listar
+    varias canchas a la vez (mismo patron que _contexto_usuarios_publicos)."""
+
+    ids = [cancha.id for cancha in canchas]
+
+    mis_calificaciones = {}
+
+    if request.user.is_authenticated:
+        mis_calificaciones = dict(
+            CalificacionCancha.objects.filter(
+                evaluador=request.user,
+                cancha_id__in=ids,
+            ).values_list("cancha_id", "valor")
+        )
+
+    return {
+        "request": request,
+        "promedios_cancha": _promedios_por_cancha(ids),
+        "mis_calificaciones_cancha": mis_calificaciones,
+    }
+
+
 @api_view(["GET", "POST"])
 def canchas(request):
 
     if request.method == "GET":
 
-        listado = Cancha.objects.select_related(
-            "dueno"
-        ).order_by("-fecha_creacion")
+        listado = list(
+            Cancha.objects.select_related(
+                "dueno"
+            ).prefetch_related(
+                "horarios"
+            ).order_by("-fecha_creacion")
+        )
 
         serializer = CanchaSerializer(
             listado,
             many=True,
-            context={"request": request}
+            context=_contexto_canchas(request, listado)
         )
 
         return Response(serializer.data)
@@ -1382,6 +1442,8 @@ def cancha_detalle(request, cancha_id):
 
     cancha = Cancha.objects.select_related(
         "dueno"
+    ).prefetch_related(
+        "horarios"
     ).filter(
         id=cancha_id
     ).first()
@@ -1440,6 +1502,152 @@ def cancha_detalle(request, cancha_id):
             context={"request": request}
         ).data
     )
+
+
+@api_view(["PUT"])
+def horarios_cancha(request, cancha_id):
+
+    cancha = Cancha.objects.filter(
+        id=cancha_id
+    ).first()
+
+    if cancha is None:
+        return Response(
+            {
+                "mensaje": "Cancha no encontrada."
+            },
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    if not usuario_puede_editar_cancha(request.user, cancha):
+        return Response(
+            {
+                "mensaje": "No tenés permiso para modificar los horarios de esta cancha."
+            },
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    serializer = AgendaSemanalCanchaSerializer(
+        data=request.data
+    )
+
+    if not serializer.is_valid():
+        return Response(
+            serializer.errors,
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # Reemplaza la agenda semanal completa. Esto NUNCA toca Partido ni
+    # ParticipacionPartido: cambiar la agenda no cancela partidos que
+    # ya existen, solo cambia que horarios se podran reservar de ahora
+    # en mas (ver PartidoSerializer.validate()).
+    with transaction.atomic():
+
+        HorarioCancha.objects.filter(
+            cancha=cancha
+        ).delete()
+
+        nuevos = []
+        horas_vistas = set()
+
+        for dia_semana, clave in enumerate(DIAS_SEMANA_CLAVES):
+            for hora in serializer.validated_data[clave]:
+
+                identificador = (dia_semana, hora)
+
+                if identificador in horas_vistas:
+                    continue
+
+                horas_vistas.add(identificador)
+
+                nuevos.append(
+                    HorarioCancha(
+                        cancha=cancha,
+                        dia_semana=dia_semana,
+                        hora=hora,
+                    )
+                )
+
+        HorarioCancha.objects.bulk_create(nuevos)
+
+    return Response(
+        CanchaSerializer(
+            cancha,
+            context={"request": request}
+        ).data["agenda_semanal"]
+    )
+
+
+@api_view(["POST"])
+def calificar_cancha(request, cancha_id):
+
+    cancha = Cancha.objects.filter(
+        id=cancha_id
+    ).first()
+
+    if cancha is None:
+        return Response(
+            {
+                "mensaje": "Cancha no encontrada."
+            },
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    # Mismo criterio que ya aplicaba el frontend (el boton de
+    # calificar solo se mostraba para jugadores): se mantiene esa
+    # regla, ahora tambien validada en el backend.
+    try:
+        es_jugador = request.user.perfil.rol == Perfil.Rol.JUGADOR
+    except Perfil.DoesNotExist:
+        es_jugador = False
+
+    if not es_jugador:
+        return Response(
+            {
+                "mensaje": "Solo los jugadores pueden calificar canchas."
+            },
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    serializer = CalificacionUsuarioSerializer(
+        data=request.data
+    )
+
+    if not serializer.is_valid():
+        return Response(
+            serializer.errors,
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    calificacion, created = (
+        CalificacionCancha.objects.update_or_create(
+            cancha=cancha,
+            evaluador=request.user,
+            defaults={
+                "valor": serializer.validated_data["valor"]
+            }
+        )
+    )
+
+    promedio = cancha.calificaciones.aggregate(
+        promedio=Avg("valor")
+    )["promedio"]
+
+    return Response({
+        "mensaje": "Calificación guardada correctamente.",
+
+        "promedio": (
+            round(float(promedio), 1)
+            if promedio is not None
+            else None
+        ),
+
+        "cantidad_calificaciones": (
+            cancha.calificaciones.count()
+        ),
+
+        "mi_calificacion": calificacion.valor,
+    })
 
 
 @api_view(["GET"])

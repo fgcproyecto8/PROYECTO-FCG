@@ -66,6 +66,7 @@ export default function Home() {
       price: formatPrecio(cancha.precio),
       image: cancha.imagen,
       tags: [cancha.tipo],
+      rating: cancha.promedio_calificacion,
     })
   );
 

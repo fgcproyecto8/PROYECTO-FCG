@@ -213,11 +213,11 @@ export default function Partidos() {
         {/* Encabezado */}
         <section className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h1 className="text-3xl font-extrabold tracking-tight sm:text-4xl">
+            <h1 className="page-title">
               Partidos
             </h1>
 
-            <p className="mt-1 text-sm text-zinc-400">
+            <p className="mt-1 page-subtitle">
               Gestioná tus encuentros y descubrí nuevos desafíos.
             </p>
           </div>
@@ -278,7 +278,7 @@ export default function Partidos() {
         {/* Partidos disponibles */}
         <section>
           <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-2xl font-bold sm:text-3xl">
+            <h2 className="section-title">
               Partidos Disponibles
             </h2>
 

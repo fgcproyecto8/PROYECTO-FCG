@@ -21,10 +21,7 @@ import RatingBadge from "../components/RatingBadge";
 
 import { formatPrecio } from "../utils/format";
 import { mapearErroresDeCampos } from "../utils/apiErrors.js";
-import { hoyComoISO, mananaComoISO } from "../utils/partidoAdapter";
 import { getCanchas, getPartidos, crearPartido } from "../services/api.js";
-
-import { obtenerHorariosMock } from "../data/horariosMock";
 
 export default function CrearPartido() {
   const navigate = useNavigate();
@@ -46,6 +43,8 @@ export default function CrearPartido() {
   const [errores, setErrores] = useState({});
   const [mensaje, setMensaje] = useState("");
   const [guardando, setGuardando] = useState(false);
+  const [cargando, setCargando] = useState(true);
+  const [errorCarga, setErrorCarga] = useState("");
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -57,21 +56,19 @@ export default function CrearPartido() {
 
     const cargarDatos = async () => {
       try {
+        setCargando(true);
+        setErrorCarga("");
+
         const [datosCanchas, datosPartidos] = await Promise.all([
           getCanchas(token),
           getPartidos(token),
         ]);
 
-        const canchasConHorarios = datosCanchas.map((c) => ({
-          ...c,
-          horarios: obtenerHorariosMock(c.id),
-        }));
-
-        setCanchas(canchasConHorarios);
+        setCanchas(datosCanchas);
         setPartidosExistentes(datosPartidos);
 
-        if (canchasConHorarios.length > 0) {
-          setCanchaId(canchasConHorarios[0].id);
+        if (datosCanchas.length > 0) {
+          setCanchaId(datosCanchas[0].id);
         }
       } catch (error) {
         console.error("Error al cargar datos:", error);
@@ -80,7 +77,17 @@ export default function CrearPartido() {
           localStorage.removeItem("token");
           localStorage.removeItem("user");
           navigate("/login", { replace: true });
+          return;
         }
+
+        // Importante: si falla por otro motivo, esto no debe
+        // interpretarse como "no tenés canchas disponibles" - el
+        // selector se vería vacío igual que si no hubiera canchas.
+        setErrorCarga(
+          "No se pudieron cargar las canchas. Intentá de nuevo más tarde."
+        );
+      } finally {
+        setCargando(false);
       }
     };
 
@@ -93,40 +100,15 @@ export default function CrearPartido() {
     [canchas, canchaId]
   );
 
+  // La aplicación solo ofrece canchas de fútbol 5 (Cancha.Tipo en el
+  // backend no admite otro valor): la modalidad y el cupo son siempre
+  // los mismos, no dependen de la cancha elegida.
   const getModalidad = (canchaSeleccionada) => {
-    if (!canchaSeleccionada) return "—";
-
-    if (canchaSeleccionada.tipo === "FÚTBOL 5") {
-      return "5 vs 5";
-    }
-
-    if (canchaSeleccionada.tipo === "FÚTBOL 7") {
-      return "7 vs 7";
-    }
-
-    if (canchaSeleccionada.tipo === "FÚTBOL 11") {
-      return "11 vs 11";
-    }
-
-    return canchaSeleccionada.tipo || "—";
+    return canchaSeleccionada ? "5 vs 5" : "—";
   };
 
   const getCupos = (canchaSeleccionada) => {
-    if (!canchaSeleccionada) return null;
-
-    if (canchaSeleccionada.tipo === "FÚTBOL 5") {
-      return 10;
-    }
-
-    if (canchaSeleccionada.tipo === "FÚTBOL 7") {
-      return 14;
-    }
-
-    if (canchaSeleccionada.tipo === "FÚTBOL 11") {
-      return 22;
-    }
-
-    return null;
+    return canchaSeleccionada ? 10 : null;
   };
 
   const normalizarNombre = (nombre) => {
@@ -136,12 +118,16 @@ export default function CrearPartido() {
       .toLowerCase();
   };
 
+  // fecha_hoy/fecha_manana vienen de la cancha seleccionada (las
+  // calcula el backend con la zona horaria de Argentina, ver
+  // fechas_hoy_y_manana() en models.py) - ya no se calculan en el
+  // navegador, para que frontend y backend siempre coincidan.
   const fechaISODelDia = (dia) => {
-    return dia === "hoy" ? hoyComoISO() : mananaComoISO();
+    return dia === "hoy" ? cancha?.fecha_hoy : cancha?.fecha_manana;
   };
 
-  // Horarios que el dueño ofrece para esta cancha (horariosMock) menos
-  // los que ya estan ocupados por un partido real existente para esa
+  // Horarios que el dueño ofrece para esta cancha (reales, del backend)
+  // menos los que ya estan ocupados por un partido real existente para esa
   // misma cancha+fecha+hora. Esto es solo para no OFRECER un horario
   // ocupado en los chips; el backend sigue siendo quien impide crear
   // dos partidos en el mismo cancha+fecha+hora (UniqueConstraint +
@@ -361,13 +347,19 @@ export default function CrearPartido() {
           Volver
         </button>
 
-        <h1 className="text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white">
+        <h1 className="page-title">
           Crear Partido
         </h1>
 
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+        <p className="mt-1 page-subtitle">
           Configurá los detalles y armá tu equipo.
         </p>
+
+        {errorCarga && (
+          <div className="mt-4 rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-800 dark:border-red-700 dark:bg-red-950/30 dark:text-red-300">
+            {errorCarga}
+          </div>
+        )}
 
         <Card
           icon={CalendarDays}
@@ -378,11 +370,17 @@ export default function CrearPartido() {
             Elegí dónde se jugará el encuentro.
           </p>
 
-          <CanchaSelector
-            canchas={canchas}
-            canchaId={canchaId}
-            onSelect={seleccionarCancha}
-          />
+          {cargando ? (
+            <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
+              Cargando canchas...
+            </p>
+          ) : (
+            <CanchaSelector
+              canchas={canchas}
+              canchaId={canchaId}
+              onSelect={seleccionarCancha}
+            />
+          )}
 
           {cancha && (
             <div className="mt-4 flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/60">
@@ -396,7 +394,7 @@ export default function CrearPartido() {
                 </p>
               </div>
 
-              <RatingBadge canchaId={cancha.id} />
+              <RatingBadge promedio={cancha.promedio_calificacion} />
             </div>
           )}
 
@@ -522,7 +520,7 @@ export default function CrearPartido() {
         <Card className="mt-5">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <h3 className="flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-white">
+              <h3 className="subsection-title flex items-center gap-2">
                 {esPublico ? (
                   <Eye className="h-5 w-5 text-emerald-500" />
                 ) : (
@@ -597,7 +595,7 @@ export default function CrearPartido() {
                 <span>{cancha?.nombre || "—"}</span>
 
                 {cancha && (
-                  <RatingBadge canchaId={cancha.id} />
+                  <RatingBadge promedio={cancha.promedio_calificacion} />
                 )}
               </dd>
             </div>
