@@ -179,9 +179,10 @@ class CalificacionUsuario(models.Model):
 class Cancha(models.Model):
 
     class Tipo(models.TextChoices):
+        # La aplicación solo ofrece canchas de fútbol 5: no existe hoy
+        # ningún flujo (alta de cancha, creación de partido) que
+        # trabaje con otra modalidad.
         FUTBOL_5 = "FÚTBOL 5", "Fútbol 5"
-        FUTBOL_7 = "FÚTBOL 7", "Fútbol 7"
-        FUTBOL_11 = "FÚTBOL 11", "Fútbol 11"
 
     dueno = models.ForeignKey(
         User,
@@ -227,17 +228,111 @@ class Cancha(models.Model):
         return f"{self.nombre} ({self.dueno.username})"
 
 
-CUPO_POR_TIPO = {
-    Cancha.Tipo.FUTBOL_5: 10,
-    Cancha.Tipo.FUTBOL_7: 14,
-    Cancha.Tipo.FUTBOL_11: 22,
-}
+class HorarioCancha(models.Model):
+    """Agenda semanal recurrente que el dueño ofrece para su cancha:
+    que horas habilita para cada dia de la semana (lunes a domingo).
+    No representa fechas concretas ni excepciones puntuales (dias
+    feriados, cierres) - eso queda fuera de este modelo a proposito."""
 
-MODALIDAD_POR_CUPO = {
-    10: "5 vs 5",
-    14: "7 vs 7",
-    22: "11 vs 11",
-}
+    class DiaSemana(models.IntegerChoices):
+        # Mismo orden que date.weekday() de Python (lunes=0 ...
+        # domingo=6), para poder mapear una fecha real a su dia_semana
+        # sin ninguna conversion adicional.
+        LUNES = 0, "Lunes"
+        MARTES = 1, "Martes"
+        MIERCOLES = 2, "Miércoles"
+        JUEVES = 3, "Jueves"
+        VIERNES = 4, "Viernes"
+        SABADO = 5, "Sábado"
+        DOMINGO = 6, "Domingo"
+
+    cancha = models.ForeignKey(
+        Cancha,
+        on_delete=models.CASCADE,
+        related_name="horarios"
+    )
+
+    dia_semana = models.PositiveSmallIntegerField(
+        choices=DiaSemana.choices
+    )
+
+    hora = models.TimeField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["cancha", "dia_semana", "hora"],
+                name="horario_cancha_unico"
+            )
+        ]
+
+        ordering = ["dia_semana", "hora"]
+
+    def __str__(self):
+        return (
+            f"{self.cancha.nombre} - "
+            f"{self.get_dia_semana_display()} {self.hora}"
+        )
+
+
+def fechas_hoy_y_manana():
+    """Hoy y mañana como fechas reales, en la timezone activa del
+    proyecto (Argentina) - fuente unica de verdad para que el
+    frontend no tenga que calcularlas por su cuenta con el reloj del
+    dispositivo del usuario (eso fue lo que causaba el bug de
+    zona horaria en partidoAdapter.js)."""
+
+    hoy = timezone.localdate()
+
+    return hoy, hoy + timedelta(days=1)
+
+
+class CalificacionCancha(models.Model):
+    """Calificacion por estrellas de una CANCHA (1 a 5), distinta de
+    CalificacionUsuario (que califica personas, no canchas). Un mismo
+    usuario puede volver a calificar la misma cancha: se actualiza el
+    valor existente (update_or_create en la vista), no se duplica."""
+
+    cancha = models.ForeignKey(
+        Cancha,
+        on_delete=models.CASCADE,
+        related_name="calificaciones"
+    )
+
+    evaluador = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="calificaciones_canchas_realizadas"
+    )
+
+    valor = models.PositiveSmallIntegerField(
+        validators=[
+            MinValueValidator(1),
+            MaxValueValidator(5)
+        ]
+    )
+
+    fecha_actualizacion = models.DateTimeField(
+        auto_now=True
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["cancha", "evaluador"],
+                name="calificacion_cancha_unica"
+            )
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.evaluador.username} -> "
+            f"{self.cancha.nombre}: {self.valor}"
+        )
+
+
+CUPO_FUTBOL_5 = 10
+MODALIDAD_FUTBOL_5 = "5 vs 5"
 
 
 class Partido(models.Model):

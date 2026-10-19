@@ -10,8 +10,10 @@ from rest_framework import serializers
 
 from .models import (
     Cancha,
-    CUPO_POR_TIPO,
-    MODALIDAD_POR_CUPO,
+    CalificacionCancha,
+    CUPO_FUTBOL_5,
+    HorarioCancha,
+    MODALIDAD_FUTBOL_5,
     Notificacion,
     Partido,
     ParticipacionPartido,
@@ -19,10 +21,24 @@ from .models import (
     Perfil,
     SolicitudDueno,
     SolicitudAmistad,
+    fechas_hoy_y_manana,
     partido_esta_vencido,
     partidos_jugados_por_usuario,
     usuario_puede_editar_cancha,
 )
+
+# Mismo orden que HorarioCancha.DiaSemana (lunes=0 ... domingo=6):
+# claves de texto para la agenda semanal completa que edita el dueño,
+# distinta del resumen {hoy, manana} que consumen los jugadores.
+DIAS_SEMANA_CLAVES = [
+    "lunes",
+    "martes",
+    "miercoles",
+    "jueves",
+    "viernes",
+    "sabado",
+    "domingo",
+]
 
 
 class RegisterSerializer(serializers.Serializer):
@@ -359,6 +375,13 @@ class UsuarioPublicoSerializer(serializers.ModelSerializer):
 class CanchaSerializer(serializers.ModelSerializer):
 
     puede_editar = serializers.SerializerMethodField()
+    horarios = serializers.SerializerMethodField()
+    agenda_semanal = serializers.SerializerMethodField()
+    fecha_hoy = serializers.SerializerMethodField()
+    fecha_manana = serializers.SerializerMethodField()
+    promedio_calificacion = serializers.SerializerMethodField()
+    cantidad_calificaciones = serializers.SerializerMethodField()
+    mi_calificacion = serializers.SerializerMethodField()
 
     def get_puede_editar(self, cancha):
         request = self.context.get("request")
@@ -367,6 +390,108 @@ class CanchaSerializer(serializers.ModelSerializer):
             return False
 
         return usuario_puede_editar_cancha(request.user, cancha)
+
+    def _horas_por_dia_semana(self, cancha):
+        # cancha.horarios.all() (sin filter/order_by encadenados)
+        # respeta el prefetch_related hecho en la vista al listar
+        # varias canchas; el orden ya viene de Meta.ordering del
+        # modelo (dia_semana, hora).
+        horas_por_dia = {}
+
+        for horario in cancha.horarios.all():
+            horas_por_dia.setdefault(horario.dia_semana, []).append(
+                horario.hora.strftime("%H:%M")
+            )
+
+        return horas_por_dia
+
+    def get_horarios(self, cancha):
+        # Resumen {hoy, manana} que consumen los jugadores (Canchas.jsx,
+        # CrearPartido.jsx): se calcula en el momento a partir de la
+        # agenda semanal real y de la fecha real de hoy/manana, no de
+        # ninguna categoria "hoy"/"manana" guardada en la base.
+        hoy, manana = fechas_hoy_y_manana()
+        horas_por_dia = self._horas_por_dia_semana(cancha)
+
+        return {
+            "hoy": horas_por_dia.get(hoy.weekday(), []),
+            "manana": horas_por_dia.get(manana.weekday(), []),
+        }
+
+    def get_agenda_semanal(self, cancha):
+        # Agenda completa de los 7 dias: solo para que el dueño (o un
+        # admin) la consulte/edite en CanchaForm.jsx. Un jugador u otro
+        # usuario que no sea dueño de esta cancha no debe recibirla -
+        # para esos casos alcanza con el resumen hoy/manana de
+        # get_horarios(). Misma regla que get_puede_editar(), sin
+        # duplicarla.
+        request = self.context.get("request")
+
+        if not request or not request.user.is_authenticated:
+            return None
+
+        if not usuario_puede_editar_cancha(request.user, cancha):
+            return None
+
+        horas_por_dia = self._horas_por_dia_semana(cancha)
+
+        return {
+            clave: horas_por_dia.get(numero, [])
+            for numero, clave in enumerate(DIAS_SEMANA_CLAVES)
+        }
+
+    def get_fecha_hoy(self, cancha):
+        hoy, _ = fechas_hoy_y_manana()
+        return hoy.isoformat()
+
+    def get_fecha_manana(self, cancha):
+        _, manana = fechas_hoy_y_manana()
+        return manana.isoformat()
+
+    def get_promedio_calificacion(self, cancha):
+
+        promedios = self.context.get("promedios_cancha")
+
+        if promedios is not None:
+            datos = promedios.get(cancha.id)
+            return datos["promedio"] if datos else None
+
+        promedio = cancha.calificaciones.aggregate(
+            promedio=Avg("valor")
+        )["promedio"]
+
+        return (
+            round(float(promedio), 1)
+            if promedio is not None
+            else None
+        )
+
+    def get_cantidad_calificaciones(self, cancha):
+
+        promedios = self.context.get("promedios_cancha")
+
+        if promedios is not None:
+            datos = promedios.get(cancha.id)
+            return datos["cantidad"] if datos else 0
+
+        return cancha.calificaciones.count()
+
+    def get_mi_calificacion(self, cancha):
+        request = self.context.get("request")
+
+        if not request or not request.user.is_authenticated:
+            return 0
+
+        mis_calificaciones = self.context.get("mis_calificaciones_cancha")
+
+        if mis_calificaciones is not None:
+            return mis_calificaciones.get(cancha.id, 0)
+
+        calificacion = cancha.calificaciones.filter(
+            evaluador=request.user
+        ).first()
+
+        return calificacion.valor if calificacion else 0
 
     def validate_precio(self, value):
         if value <= 0:
@@ -388,14 +513,56 @@ class CanchaSerializer(serializers.ModelSerializer):
             "precio",
             "imagen",
             "puede_editar",
+            "horarios",
+            "agenda_semanal",
+            "fecha_hoy",
+            "fecha_manana",
+            "promedio_calificacion",
+            "cantidad_calificaciones",
+            "mi_calificacion",
             "fecha_creacion",
         )
 
         read_only_fields = (
             "id",
             "puede_editar",
+            "horarios",
+            "agenda_semanal",
+            "fecha_hoy",
+            "fecha_manana",
+            "promedio_calificacion",
+            "cantidad_calificaciones",
+            "mi_calificacion",
             "fecha_creacion",
         )
+
+
+class AgendaSemanalCanchaSerializer(serializers.Serializer):
+    """Para PUT /canchas/<id>/horarios/: la agenda semanal completa
+    que edita el dueño (7 dias), no el resumen hoy/manana que
+    consumen los jugadores."""
+
+    lunes = serializers.ListField(
+        child=serializers.TimeField(), required=False, default=list
+    )
+    martes = serializers.ListField(
+        child=serializers.TimeField(), required=False, default=list
+    )
+    miercoles = serializers.ListField(
+        child=serializers.TimeField(), required=False, default=list
+    )
+    jueves = serializers.ListField(
+        child=serializers.TimeField(), required=False, default=list
+    )
+    viernes = serializers.ListField(
+        child=serializers.TimeField(), required=False, default=list
+    )
+    sabado = serializers.ListField(
+        child=serializers.TimeField(), required=False, default=list
+    )
+    domingo = serializers.ListField(
+        child=serializers.TimeField(), required=False, default=list
+    )
 
 
 class CalificacionUsuarioSerializer(serializers.Serializer):
@@ -429,6 +596,11 @@ class PartidoSerializer(serializers.ModelSerializer):
 
     cancha_imagen = serializers.SerializerMethodField()
 
+    # Denormalizado igual que cancha_nombre/cancha_direccion/cancha_imagen,
+    # para que las tarjetas de partido muestren la calificacion de la
+    # cancha sin pedirla aparte.
+    cancha_promedio_calificacion = serializers.SerializerMethodField()
+
     # write_only: nunca se serializa en la respuesta. Solo se exige
     # cuando es_publico=False (ver validate()).
     password = serializers.CharField(
@@ -444,6 +616,13 @@ class PartidoSerializer(serializers.ModelSerializer):
     precio_por_jugador = serializers.SerializerMethodField()
     estoy_unido = serializers.SerializerMethodField()
     vencido = serializers.SerializerMethodField()
+
+    # Fecha real de "hoy"/"mañana" segun el backend (misma fuente que
+    # usa Cancha.horarios): el frontend las usa para etiquetar partidos
+    # como "Hoy"/"Mañana" sin calcularlo por su cuenta con el reloj del
+    # dispositivo (ver partidoAdapter.js).
+    fecha_hoy = serializers.SerializerMethodField()
+    fecha_manana = serializers.SerializerMethodField()
 
     creador_username = serializers.CharField(
         source="creador.username",
@@ -462,6 +641,24 @@ class PartidoSerializer(serializers.ModelSerializer):
             )
 
         return partido.cancha.imagen.url
+
+    def get_cancha_promedio_calificacion(self, partido):
+
+        promedios = self.context.get("cancha_promedios")
+
+        if promedios is not None:
+            datos = promedios.get(partido.cancha_id)
+            return datos["promedio"] if datos else None
+
+        promedio = partido.cancha.calificaciones.aggregate(
+            promedio=Avg("valor")
+        )["promedio"]
+
+        return (
+            round(float(promedio), 1)
+            if promedio is not None
+            else None
+        )
 
     def get_jugadores(self, partido):
         # partido.participaciones.all() (sin filter/order_by/select_related
@@ -485,7 +682,7 @@ class PartidoSerializer(serializers.ModelSerializer):
         return len(partido.participaciones.all())
 
     def get_modalidad(self, partido):
-        return MODALIDAD_POR_CUPO.get(partido.cupo, "—")
+        return MODALIDAD_FUTBOL_5
 
     def get_precio_total(self, partido):
         return partido.cancha.precio
@@ -512,6 +709,14 @@ class PartidoSerializer(serializers.ModelSerializer):
     def get_vencido(self, partido):
         return partido_esta_vencido(partido)
 
+    def get_fecha_hoy(self, partido):
+        hoy, _ = fechas_hoy_y_manana()
+        return hoy.isoformat()
+
+    def get_fecha_manana(self, partido):
+        _, manana = fechas_hoy_y_manana()
+        return manana.isoformat()
+
     def validate(self, data):
         es_publico = data.get("es_publico", True)
         password = data.get("password", "")
@@ -535,6 +740,22 @@ class PartidoSerializer(serializers.ModelSerializer):
         hora = data.get("hora")
 
         if cancha and fecha and hora:
+
+            # El dueño pudo haber cambiado su agenda semanal despues
+            # de que este partido ya exista: eso no afecta partidos ya
+            # creados (ver create()), solo impide reservar un horario
+            # que la cancha no ofrece para ese dia de la semana.
+            horario_ofrecido = HorarioCancha.objects.filter(
+                cancha=cancha,
+                dia_semana=fecha.weekday(),
+                hora=hora,
+            ).exists()
+
+            if not horario_ofrecido:
+                raise serializers.ValidationError({
+                    "horario": "Ese horario no está disponible para esta cancha."
+                })
+
             if Partido.objects.filter(
                 cancha=cancha,
                 fecha=fecha,
@@ -549,10 +770,9 @@ class PartidoSerializer(serializers.ModelSerializer):
     @transaction.atomic
     def create(self, validated_data):
         password_plana = validated_data.pop("password", "")
-        cancha = validated_data["cancha"]
         creador = validated_data["creador"]
 
-        validated_data["cupo"] = CUPO_POR_TIPO.get(cancha.tipo, 10)
+        validated_data["cupo"] = CUPO_FUTBOL_5
 
         validated_data["password"] = (
             make_password(password_plana)
@@ -585,6 +805,7 @@ class PartidoSerializer(serializers.ModelSerializer):
             "cancha_nombre",
             "cancha_direccion",
             "cancha_imagen",
+            "cancha_promedio_calificacion",
             "jugadores",
             "cantidad_jugadores",
             "modalidad",
@@ -592,6 +813,8 @@ class PartidoSerializer(serializers.ModelSerializer):
             "precio_por_jugador",
             "estoy_unido",
             "vencido",
+            "fecha_hoy",
+            "fecha_manana",
             "creador_username",
             "fecha_creacion",
         )
@@ -602,6 +825,7 @@ class PartidoSerializer(serializers.ModelSerializer):
             "cancha_nombre",
             "cancha_direccion",
             "cancha_imagen",
+            "cancha_promedio_calificacion",
             "jugadores",
             "cantidad_jugadores",
             "modalidad",
@@ -609,6 +833,8 @@ class PartidoSerializer(serializers.ModelSerializer):
             "precio_por_jugador",
             "estoy_unido",
             "vencido",
+            "fecha_hoy",
+            "fecha_manana",
             "creador_username",
             "fecha_creacion",
         )

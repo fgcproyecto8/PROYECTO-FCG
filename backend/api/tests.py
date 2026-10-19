@@ -1,4 +1,5 @@
-from datetime import time, timedelta
+from datetime import datetime, time, timedelta
+from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.test import TestCase
@@ -9,7 +10,9 @@ from rest_framework.test import APIClient
 
 from .models import (
     Cancha,
+    CalificacionCancha,
     CalificacionUsuario,
+    HorarioCancha,
     InvitacionPartido,
     Notificacion,
     ParticipacionPartido,
@@ -57,6 +60,19 @@ def crear_dueno(username, estado):
     )
 
     return usuario
+
+
+def crear_agenda_completa(cancha, horas):
+    """Habilita las horas dadas los 7 dias de la semana para `cancha`.
+    Util para que los tests de creacion de Partido no choquen con la
+    nueva validacion de "horario ofrecido": no les interesa probar la
+    agenda en si, solo necesitan que el horario que usan exista."""
+
+    for dia_semana in range(7):
+        for hora in horas:
+            HorarioCancha.objects.create(
+                cancha=cancha, dia_semana=dia_semana, hora=hora
+            )
 
 
 class UsuariosPublicosContextoTests(TestCase):
@@ -1093,6 +1109,692 @@ class CanchaTests(TestCase):
         self.assertEqual(respuesta.status_code, 200)
 
 
+class HorarioCanchaTests(TestCase):
+    """Agenda semanal recurrente por cancha (lunes a domingo), ahora
+    real en el backend. "hoy"/"manana" son una vista calculada a partir
+    de la agenda y de la fecha real, no una categoria guardada."""
+
+    DIAS = [
+        "lunes", "martes", "miercoles", "jueves",
+        "viernes", "sabado", "domingo",
+    ]
+
+    def setUp(self):
+        self.client = APIClient()
+
+        self.jugador = crear_jugador("jugador_horarios")
+
+        self.dueno = crear_dueno(
+            "dueno_horarios", SolicitudDueno.Estado.APROBADA
+        )
+
+        self.otro_dueno = crear_dueno(
+            "otro_dueno_horarios", SolicitudDueno.Estado.APROBADA
+        )
+
+        self.admin = User.objects.create_superuser(
+            username="admin_horarios",
+            email="admin_horarios@example.com",
+            password="clave-segura-123",
+        )
+
+        self.cancha = Cancha.objects.create(
+            dueno=self.dueno,
+            nombre="Cancha Horarios Test",
+            tipo=Cancha.Tipo.FUTBOL_5,
+            direccion="Calle Horarios 1",
+            telefono="444444",
+            precio=10000,
+        )
+
+    def _agenda(self, **dias):
+        agenda = {clave: [] for clave in self.DIAS}
+        agenda.update(dias)
+        return agenda
+
+    def test_horarios_requiere_token(self):
+        respuesta = self.client.put(
+            f"/api/canchas/{self.cancha.id}/horarios/",
+            self._agenda(lunes=["18:00"]),
+            format="json",
+        )
+
+        self.assertEqual(respuesta.status_code, 401)
+
+    def test_cancha_nueva_sin_agenda_devuelve_todo_vacio(self):
+        self.client.force_authenticate(user=self.jugador)
+
+        respuesta = self.client.get(f"/api/canchas/{self.cancha.id}/")
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(
+            respuesta.data["horarios"], {"hoy": [], "manana": []}
+        )
+
+        # El jugador no es dueño de esta cancha: no se le expone la
+        # agenda semanal completa (ver test_jugador_no_ve_agenda_semanal
+        # y test_dueno_si_ve_su_propia_agenda_semanal_vacia).
+        self.assertIsNone(respuesta.data["agenda_semanal"])
+
+    def test_dueno_si_ve_su_propia_agenda_semanal_vacia(self):
+        self.client.force_authenticate(user=self.dueno)
+
+        respuesta = self.client.get(f"/api/canchas/{self.cancha.id}/")
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(
+            respuesta.data["agenda_semanal"], self._agenda()
+        )
+
+    def test_dueno_puede_crear_agenda_de_su_cancha(self):
+        self.client.force_authenticate(user=self.dueno)
+
+        respuesta = self.client.put(
+            f"/api/canchas/{self.cancha.id}/horarios/",
+            self._agenda(
+                lunes=["18:00", "20:00"],
+                miercoles=["19:00"],
+            ),
+            format="json",
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(
+            respuesta.data,
+            self._agenda(lunes=["18:00", "20:00"], miercoles=["19:00"]),
+        )
+
+        self.assertEqual(
+            HorarioCancha.objects.filter(cancha=self.cancha).count(), 3
+        )
+
+        # Se ve igual al consultar la cancha de nuevo.
+        detalle = self.client.get(f"/api/canchas/{self.cancha.id}/")
+        self.assertEqual(
+            detalle.data["agenda_semanal"],
+            self._agenda(lunes=["18:00", "20:00"], miercoles=["19:00"]),
+        )
+
+    def test_modificar_agenda_reemplaza_el_conjunto_anterior(self):
+        self.client.force_authenticate(user=self.dueno)
+
+        self.client.put(
+            f"/api/canchas/{self.cancha.id}/horarios/",
+            self._agenda(lunes=["18:00", "20:00"], martes=["19:00"]),
+            format="json",
+        )
+
+        respuesta = self.client.put(
+            f"/api/canchas/{self.cancha.id}/horarios/",
+            self._agenda(domingo=["21:00"]),
+            format="json",
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.data, self._agenda(domingo=["21:00"]))
+
+        self.assertEqual(
+            HorarioCancha.objects.filter(cancha=self.cancha).count(), 1
+        )
+
+    def test_eliminar_todos_los_horarios(self):
+        self.client.force_authenticate(user=self.dueno)
+
+        self.client.put(
+            f"/api/canchas/{self.cancha.id}/horarios/",
+            self._agenda(lunes=["18:00"], martes=["19:00"]),
+            format="json",
+        )
+
+        respuesta = self.client.put(
+            f"/api/canchas/{self.cancha.id}/horarios/",
+            self._agenda(),
+            format="json",
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(
+            HorarioCancha.objects.filter(cancha=self.cancha).count(), 0
+        )
+
+    def test_dueno_no_puede_modificar_agenda_de_cancha_ajena(self):
+        self.client.force_authenticate(user=self.otro_dueno)
+
+        respuesta = self.client.put(
+            f"/api/canchas/{self.cancha.id}/horarios/",
+            self._agenda(lunes=["18:00"]),
+            format="json",
+        )
+
+        self.assertEqual(respuesta.status_code, 403)
+        self.assertEqual(
+            HorarioCancha.objects.filter(cancha=self.cancha).count(), 0
+        )
+
+    def test_jugador_no_puede_modificar_agenda(self):
+        self.client.force_authenticate(user=self.jugador)
+
+        respuesta = self.client.put(
+            f"/api/canchas/{self.cancha.id}/horarios/",
+            self._agenda(lunes=["18:00"]),
+            format="json",
+        )
+
+        self.assertEqual(respuesta.status_code, 403)
+
+    def test_admin_puede_modificar_agenda_de_cualquier_cancha(self):
+        self.client.force_authenticate(user=self.admin)
+
+        respuesta = self.client.put(
+            f"/api/canchas/{self.cancha.id}/horarios/",
+            self._agenda(lunes=["18:00"]),
+            format="json",
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+
+    def test_hora_invalida_es_rechazada(self):
+        self.client.force_authenticate(user=self.dueno)
+
+        respuesta = self.client.put(
+            f"/api/canchas/{self.cancha.id}/horarios/",
+            self._agenda(lunes=["no-es-una-hora"]),
+            format="json",
+        )
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertEqual(
+            HorarioCancha.objects.filter(cancha=self.cancha).count(), 0
+        )
+
+    def test_horas_no_se_duplican_si_se_envia_la_misma_hora_dos_veces(
+        self,
+    ):
+        self.client.force_authenticate(user=self.dueno)
+
+        respuesta = self.client.put(
+            f"/api/canchas/{self.cancha.id}/horarios/",
+            self._agenda(lunes=["18:00", "18:00"]),
+            format="json",
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(
+            HorarioCancha.objects.filter(cancha=self.cancha).count(), 1
+        )
+
+    def test_agenda_visible_desde_otra_sesion_del_mismo_dueno(self):
+        self.client.force_authenticate(user=self.dueno)
+
+        self.client.put(
+            f"/api/canchas/{self.cancha.id}/horarios/",
+            self._agenda(lunes=["18:00"], martes=["20:00"]),
+            format="json",
+        )
+
+        # Otro cliente autenticado como el mismo dueño, simulando otro
+        # navegador/dispositivo.
+        otro_cliente = APIClient()
+        otro_cliente.force_authenticate(user=self.dueno)
+
+        respuesta = otro_cliente.get(
+            f"/api/canchas/{self.cancha.id}/"
+        )
+
+        self.assertEqual(
+            respuesta.data["agenda_semanal"],
+            self._agenda(lunes=["18:00"], martes=["20:00"]),
+        )
+
+    def test_jugador_no_ve_agenda_semanal_aunque_exista(self):
+        # Restriccion de acceso: un jugador (no dueño de esta cancha)
+        # solo debe recibir horarios (hoy/manana), nunca la agenda
+        # semanal completa de los 7 dias - ni siquiera de lectura.
+        self.client.force_authenticate(user=self.dueno)
+
+        self.client.put(
+            f"/api/canchas/{self.cancha.id}/horarios/",
+            self._agenda(lunes=["18:00"], martes=["20:00"]),
+            format="json",
+        )
+
+        self.client.force_authenticate(user=self.jugador)
+
+        respuesta = self.client.get(f"/api/canchas/{self.cancha.id}/")
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertIsNone(respuesta.data["agenda_semanal"])
+
+    def test_dueno_ajeno_no_ve_agenda_semanal_de_otra_cancha(self):
+        self.client.force_authenticate(user=self.dueno)
+
+        self.client.put(
+            f"/api/canchas/{self.cancha.id}/horarios/",
+            self._agenda(lunes=["18:00"]),
+            format="json",
+        )
+
+        self.client.force_authenticate(user=self.otro_dueno)
+
+        respuesta = self.client.get(f"/api/canchas/{self.cancha.id}/")
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertIsNone(respuesta.data["agenda_semanal"])
+
+    def test_admin_si_ve_agenda_semanal_de_cualquier_cancha(self):
+        self.client.force_authenticate(user=self.dueno)
+
+        self.client.put(
+            f"/api/canchas/{self.cancha.id}/horarios/",
+            self._agenda(lunes=["18:00"]),
+            format="json",
+        )
+
+        self.client.force_authenticate(user=self.admin)
+
+        respuesta = self.client.get(f"/api/canchas/{self.cancha.id}/")
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(
+            respuesta.data["agenda_semanal"], self._agenda(lunes=["18:00"])
+        )
+
+    def test_horarios_hoy_y_manana_corresponden_a_los_dias_reales(self):
+        # Una hora distinta por dia de la semana, asi se puede probar
+        # sin mockear el reloj: lo que corresponda a "hoy"/"manana"
+        # depende de que dia es realmente hoy al correr el test.
+        horas_por_dia_semana = {
+            0: "10:00", 1: "11:00", 2: "12:00", 3: "13:00",
+            4: "14:00", 5: "15:00", 6: "16:00",
+        }
+
+        self.client.force_authenticate(user=self.dueno)
+
+        self.client.put(
+            f"/api/canchas/{self.cancha.id}/horarios/",
+            self._agenda(**{
+                self.DIAS[dia_semana]: [hora]
+                for dia_semana, hora in horas_por_dia_semana.items()
+            }),
+            format="json",
+        )
+
+        hoy = timezone.localdate()
+        manana = hoy + timedelta(days=1)
+
+        self.client.force_authenticate(user=self.jugador)
+        respuesta = self.client.get(f"/api/canchas/{self.cancha.id}/")
+
+        self.assertEqual(
+            respuesta.data["horarios"]["hoy"],
+            [horas_por_dia_semana[hoy.weekday()]],
+        )
+        self.assertEqual(
+            respuesta.data["horarios"]["manana"],
+            [horas_por_dia_semana[manana.weekday()]],
+        )
+        self.assertEqual(respuesta.data["fecha_hoy"], hoy.isoformat())
+        self.assertEqual(
+            respuesta.data["fecha_manana"], manana.isoformat()
+        )
+
+    def test_editar_agenda_no_elimina_partidos_existentes(self):
+        self.client.force_authenticate(user=self.dueno)
+
+        self.client.put(
+            f"/api/canchas/{self.cancha.id}/horarios/",
+            self._agenda(miercoles=["18:00"]),
+            format="json",
+        )
+
+        # Fecha real mas cercana que sea miercoles (dia_semana=2).
+        hoy = timezone.localdate()
+        offset = (2 - hoy.weekday()) % 7
+        fecha_miercoles = (hoy + timedelta(days=offset)).isoformat()
+
+        self.client.force_authenticate(user=self.jugador)
+
+        creado = self.client.post(
+            "/api/partidos/",
+            {
+                "cancha": self.cancha.id,
+                "nombre": "Partido Agenda Editada",
+                "descripcion": "",
+                "fecha": fecha_miercoles,
+                "hora": "18:00",
+                "es_publico": True,
+            },
+        )
+
+        self.assertEqual(creado.status_code, 201)
+
+        # El dueño cambia la agenda y deja de ofrecer ese horario.
+        self.client.force_authenticate(user=self.dueno)
+
+        self.client.put(
+            f"/api/canchas/{self.cancha.id}/horarios/",
+            self._agenda(),
+            format="json",
+        )
+
+        self.assertTrue(
+            Partido.objects.filter(id=creado.data["id"]).exists()
+        )
+
+    def test_no_se_puede_crear_partido_en_horario_no_ofrecido(self):
+        # self.cancha no tiene ningun horario cargado.
+        self.client.force_authenticate(user=self.jugador)
+
+        respuesta = self.client.post(
+            "/api/partidos/",
+            {
+                "cancha": self.cancha.id,
+                "nombre": "Partido Sin Agenda",
+                "descripcion": "",
+                "fecha": "2026-09-10",
+                "hora": "20:00",
+                "es_publico": True,
+            },
+        )
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertIn("horario", respuesta.data)
+
+
+class FechaHoyMananaTimezoneTests(TestCase):
+    """fechas_hoy_y_manana() (y por lo tanto Cancha.horarios,
+    Cancha.fecha_hoy/fecha_manana y Partido.fecha_hoy/fecha_manana)
+    deben usar la zona horaria de Argentina (TIME_ZONE del proyecto),
+    no UTC. timezone.now() siempre devuelve UTC; timezone.localdate()
+    tiene que convertir correctamente antes de extraer la fecha."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.jugador = crear_jugador("medianoche_jugador")
+
+        self.dueno = crear_dueno(
+            "medianoche_dueno", SolicitudDueno.Estado.APROBADA
+        )
+
+        self.cancha = Cancha.objects.create(
+            dueno=self.dueno,
+            nombre="Cancha Medianoche Test",
+            tipo=Cancha.Tipo.FUTBOL_5,
+            direccion="Calle Medianoche 1",
+            telefono="666666",
+            precio=10000,
+        )
+
+        self.client.force_authenticate(user=self.jugador)
+
+    def test_fecha_hoy_antes_de_medianoche_argentina(self):
+        # 23:30 UTC del 10/10 son, en Argentina (UTC-3), las 20:30 del
+        # MISMO 10/10: todavia "hoy" es el 10, no el 11.
+        momento_utc = timezone.make_aware(
+            datetime(2026, 10, 10, 23, 30), timezone=timezone.UTC
+        )
+
+        with patch.object(timezone, "now", return_value=momento_utc):
+            respuesta = self.client.get(
+                f"/api/canchas/{self.cancha.id}/"
+            )
+
+        self.assertEqual(respuesta.data["fecha_hoy"], "2026-10-10")
+        self.assertEqual(respuesta.data["fecha_manana"], "2026-10-11")
+
+    def test_fecha_hoy_despues_de_medianoche_argentina(self):
+        # 03:30 UTC del 11/10 son, en Argentina, las 00:30 del 11:
+        # ya es "hoy" 11, no 10 (que es lo que daria usando UTC crudo,
+        # el bug original de toISOString() en partidoAdapter.js).
+        momento_utc = timezone.make_aware(
+            datetime(2026, 10, 11, 3, 30), timezone=timezone.UTC
+        )
+
+        with patch.object(timezone, "now", return_value=momento_utc):
+            respuesta = self.client.get(
+                f"/api/canchas/{self.cancha.id}/"
+            )
+
+        self.assertEqual(respuesta.data["fecha_hoy"], "2026-10-11")
+        self.assertEqual(respuesta.data["fecha_manana"], "2026-10-12")
+
+    def test_partido_tambien_usa_fecha_hoy_manana_de_argentina(self):
+        crear_agenda_completa(self.cancha, ["20:00"])
+
+        momento_utc = timezone.make_aware(
+            datetime(2026, 10, 10, 23, 30), timezone=timezone.UTC
+        )
+
+        with patch.object(timezone, "now", return_value=momento_utc):
+            respuesta = self.client.post(
+                "/api/partidos/",
+                {
+                    "cancha": self.cancha.id,
+                    "nombre": "Partido Medianoche Test",
+                    "descripcion": "",
+                    "fecha": "2026-10-10",
+                    "hora": "20:00",
+                    "es_publico": True,
+                },
+            )
+
+        self.assertEqual(respuesta.status_code, 201)
+        self.assertEqual(respuesta.data["fecha_hoy"], "2026-10-10")
+        self.assertEqual(respuesta.data["fecha_manana"], "2026-10-11")
+
+
+class CalificacionCanchaTests(TestCase):
+    """Calificacion por estrellas de una CANCHA: distinta de
+    CalificacionUsuario, antes calculada solo en localStorage."""
+
+    def setUp(self):
+        self.client = APIClient()
+
+        self.jugador = crear_jugador("jugador_calif_cancha")
+        self.jugador2 = crear_jugador("jugador2_calif_cancha")
+
+        self.dueno = crear_dueno(
+            "dueno_calif_cancha", SolicitudDueno.Estado.APROBADA
+        )
+
+        self.admin = User.objects.create_superuser(
+            username="admin_calif_cancha",
+            email="admin_calif_cancha@example.com",
+            password="clave-segura-123",
+        )
+
+        self.cancha = Cancha.objects.create(
+            dueno=self.dueno,
+            nombre="Cancha Calificaciones Test",
+            tipo=Cancha.Tipo.FUTBOL_5,
+            direccion="Calle Calif 1",
+            telefono="555555",
+            precio=10000,
+        )
+
+        crear_agenda_completa(self.cancha, ["20:00"])
+
+    def test_calificar_requiere_token(self):
+        respuesta = self.client.post(
+            f"/api/canchas/{self.cancha.id}/calificar/",
+            {"valor": 4},
+        )
+
+        self.assertEqual(respuesta.status_code, 401)
+
+    def test_cancha_sin_calificaciones_tiene_promedio_null(self):
+        self.client.force_authenticate(user=self.jugador)
+
+        respuesta = self.client.get(f"/api/canchas/{self.cancha.id}/")
+
+        self.assertIsNone(respuesta.data["promedio_calificacion"])
+        self.assertEqual(respuesta.data["cantidad_calificaciones"], 0)
+        self.assertEqual(respuesta.data["mi_calificacion"], 0)
+
+    def test_jugador_puede_calificar_cancha(self):
+        self.client.force_authenticate(user=self.jugador)
+
+        respuesta = self.client.post(
+            f"/api/canchas/{self.cancha.id}/calificar/",
+            {"valor": 4},
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.data["promedio"], 4.0)
+        self.assertEqual(respuesta.data["cantidad_calificaciones"], 1)
+        self.assertEqual(respuesta.data["mi_calificacion"], 4)
+
+        detalle = self.client.get(f"/api/canchas/{self.cancha.id}/")
+        self.assertEqual(detalle.data["promedio_calificacion"], 4.0)
+        self.assertEqual(detalle.data["mi_calificacion"], 4)
+
+    def test_promedio_se_calcula_con_varias_calificaciones(self):
+        # Sin calificaciones -> sin promedio; primero califica 4 ->
+        # promedio 4.0; segundo califica 2 -> promedio 3.0.
+        self.client.force_authenticate(user=self.jugador)
+        self.client.post(
+            f"/api/canchas/{self.cancha.id}/calificar/", {"valor": 4}
+        )
+
+        self.client.force_authenticate(user=self.jugador2)
+        respuesta = self.client.post(
+            f"/api/canchas/{self.cancha.id}/calificar/", {"valor": 2}
+        )
+
+        self.assertEqual(respuesta.data["promedio"], 3.0)
+        self.assertEqual(respuesta.data["cantidad_calificaciones"], 2)
+
+    def test_puede_cambiar_su_propia_calificacion_sin_duplicar(self):
+        self.client.force_authenticate(user=self.jugador)
+
+        self.client.post(
+            f"/api/canchas/{self.cancha.id}/calificar/", {"valor": 2}
+        )
+        respuesta = self.client.post(
+            f"/api/canchas/{self.cancha.id}/calificar/", {"valor": 5}
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.data["mi_calificacion"], 5)
+        self.assertEqual(respuesta.data["cantidad_calificaciones"], 1)
+        self.assertEqual(respuesta.data["promedio"], 5.0)
+
+        self.assertEqual(
+            CalificacionCancha.objects.filter(
+                cancha=self.cancha, evaluador=self.jugador
+            ).count(),
+            1,
+        )
+
+    def test_dueno_no_puede_calificar_cancha(self):
+        self.client.force_authenticate(user=self.dueno)
+
+        respuesta = self.client.post(
+            f"/api/canchas/{self.cancha.id}/calificar/", {"valor": 5}
+        )
+
+        self.assertEqual(respuesta.status_code, 403)
+
+    def test_admin_no_puede_calificar_cancha(self):
+        self.client.force_authenticate(user=self.admin)
+
+        respuesta = self.client.post(
+            f"/api/canchas/{self.cancha.id}/calificar/", {"valor": 5}
+        )
+
+        self.assertEqual(respuesta.status_code, 403)
+
+    def test_valor_fuera_de_rango_rechazado(self):
+        self.client.force_authenticate(user=self.jugador)
+
+        respuesta = self.client.post(
+            f"/api/canchas/{self.cancha.id}/calificar/", {"valor": 7}
+        )
+
+        self.assertEqual(respuesta.status_code, 400)
+
+    def test_calificar_cancha_inexistente_devuelve_404(self):
+        self.client.force_authenticate(user=self.jugador)
+
+        respuesta = self.client.post(
+            "/api/canchas/99999/calificar/", {"valor": 3}
+        )
+
+        self.assertEqual(respuesta.status_code, 404)
+
+    def test_calificar_cancha_no_altera_calificacionusuario(self):
+        # El jugador ya habia calificado al DUEÑO como usuario (5).
+        CalificacionUsuario.objects.create(
+            evaluador=self.jugador, evaluado=self.dueno, valor=5
+        )
+
+        self.client.force_authenticate(user=self.jugador)
+
+        self.client.post(
+            f"/api/canchas/{self.cancha.id}/calificar/", {"valor": 2}
+        )
+
+        # La calificacion de USUARIO sigue intacta en 5...
+        calificacion_usuario = CalificacionUsuario.objects.get(
+            evaluador=self.jugador, evaluado=self.dueno
+        )
+        self.assertEqual(calificacion_usuario.valor, 5)
+
+        # ...y la de CANCHA quedo guardada por separado, en 2.
+        calificacion_cancha = CalificacionCancha.objects.get(
+            evaluador=self.jugador, cancha=self.cancha
+        )
+        self.assertEqual(calificacion_cancha.valor, 2)
+
+    def test_calificacion_visible_desde_otra_sesion(self):
+        self.client.force_authenticate(user=self.jugador)
+
+        self.client.post(
+            f"/api/canchas/{self.cancha.id}/calificar/", {"valor": 4}
+        )
+
+        otro_cliente = APIClient()
+        otro_cliente.force_authenticate(user=self.jugador2)
+
+        respuesta = otro_cliente.get(
+            f"/api/canchas/{self.cancha.id}/"
+        )
+
+        self.assertEqual(respuesta.data["promedio_calificacion"], 4.0)
+        self.assertEqual(respuesta.data["mi_calificacion"], 0)
+
+    def test_promedio_de_cancha_se_refleja_en_partidos(self):
+        self.client.force_authenticate(user=self.jugador)
+
+        self.client.post(
+            f"/api/canchas/{self.cancha.id}/calificar/", {"valor": 5}
+        )
+
+        respuesta_partido = self.client.post(
+            "/api/partidos/",
+            {
+                "cancha": self.cancha.id,
+                "nombre": "Partido Con Calificacion",
+                "descripcion": "",
+                "fecha": "2026-09-10",
+                "hora": "20:00",
+                "es_publico": True,
+            },
+        )
+
+        self.assertEqual(respuesta_partido.status_code, 201)
+        self.assertEqual(
+            respuesta_partido.data["cancha_promedio_calificacion"], 5.0
+        )
+
+        listado = self.client.get("/api/partidos/")
+        creado = next(
+            p for p in listado.data
+            if p["id"] == respuesta_partido.data["id"]
+        )
+        self.assertEqual(creado["cancha_promedio_calificacion"], 5.0)
+
+
 class PartidoTests(TestCase):
     """CRUD, cupos, privacidad e invitaciones de Partido."""
 
@@ -1123,6 +1825,11 @@ class PartidoTests(TestCase):
             destinatario=self.jugador2,
             estado=SolicitudAmistad.Estado.ACEPTADA,
         )
+
+        # Habilitado los 7 dias: estos tests crean partidos con fechas
+        # fijas o relativas (ayer/manana) y no les interesa la agenda
+        # semanal en si, solo que el horario default exista.
+        crear_agenda_completa(self.cancha, ["20:00", "21:00"])
 
     def _datos_partido(self, **extra):
         datos = {
@@ -1710,6 +2417,8 @@ class NotificacionTests(TestCase):
             telefono="2222222",
             precio=10000,
         )
+
+        crear_agenda_completa(self.cancha, ["20:00"])
 
     def _crear_partido(self, creador, **extra):
         datos = {

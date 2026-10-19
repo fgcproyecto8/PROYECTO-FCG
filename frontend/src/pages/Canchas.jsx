@@ -6,7 +6,6 @@ import BottomNavbar from "../components/BottomNavbar";
 import CanchaCard from "../components/CanchaCard";
 
 import { getCanchas } from "../services/api.js";
-import { obtenerHorariosMock } from "../data/horariosMock";
 import { getAuthUser } from "../utils/authUser";
 
 
@@ -38,12 +37,7 @@ export default function Canchas() {
 
         const data = await getCanchas(token);
 
-        setCanchas(
-          data.map((cancha) => ({
-            ...cancha,
-            horarios: obtenerHorariosMock(cancha.id),
-          }))
-        );
+        setCanchas(data);
       } catch (err) {
         console.error("Error al cargar canchas:", err);
 
@@ -72,11 +66,11 @@ export default function Canchas() {
 
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
+            <h1 className="page-title">
               Canchas
             </h1>
 
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            <p className="mt-1 page-subtitle">
               Mirá las canchas disponibles.
             </p>
           </div>

@@ -51,7 +51,7 @@ export default function CanchaSelector({
               />
 
               <div className="absolute left-3 top-3 z-10">
-                <RatingBadge canchaId={cancha.id} />
+                <RatingBadge promedio={cancha.promedio_calificacion} />
               </div>
 
               <span className="absolute bottom-2 left-3 rounded-md border border-emerald-500/60 bg-neutral-950/70 px-2 py-1 text-[11px] font-bold text-emerald-400">

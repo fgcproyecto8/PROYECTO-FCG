@@ -339,6 +339,28 @@ export function eliminarCancha(token, canchaId) {
 }
 
 
+export function guardarHorariosCancha(token, canchaId, horarios) {
+  return request(`/canchas/${canchaId}/horarios/`, {
+    method: "PUT",
+    headers: {
+      Authorization: `Token ${token}`,
+    },
+    body: JSON.stringify(horarios),
+  });
+}
+
+
+export function calificarCancha(token, canchaId, valor) {
+  return request(`/canchas/${canchaId}/calificar/`, {
+    method: "POST",
+    headers: {
+      Authorization: `Token ${token}`,
+    },
+    body: JSON.stringify({ valor }),
+  });
+}
+
+
 // PARTIDOS
 
 export function getPartidos(token) {

@@ -1,10 +1,24 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   PlusCircle,
   Check,
   X,
 } from "lucide-react";
-import { HORARIOS_BASE } from "../data/horariosMock";
+
+// Horas sugeridas por defecto para activar/desactivar con un toque;
+// el dueño puede agregar cualquier otra hora con el boton +. Es solo
+// una lista de UI (que horas ofrecer como chips), no datos: los
+// horarios reales que el dueño elige se guardan en el backend.
+const HORARIOS_BASE = [
+  "16:00",
+  "17:00",
+  "18:00",
+  "19:00",
+  "20:00",
+  "21:00",
+  "22:00",
+  "23:00",
+];
 
 export default function HorarioChips({
   titulo,
@@ -18,6 +32,8 @@ export default function HorarioChips({
 
   const [nuevoHorario, setNuevoHorario] = useState("");
 
+  // Horas personalizadas (fuera de HORARIOS_BASE) que hay que seguir
+  // mostrando como chip aunque el usuario las desactive.
   const [
     horariosPersonalizados,
     setHorariosPersonalizados,
@@ -26,6 +42,33 @@ export default function HorarioChips({
       (hora) => !HORARIOS_BASE.includes(hora)
     )
   );
+
+  // seleccionados puede llegar vacio en el primer render y recien
+  // completarse cuando CanchaForm.jsx termina de cargar la cancha de
+  // forma asincrona: sin este efecto, una hora personalizada ya
+  // guardada quedaba invisible para siempre, porque el useState de
+  // arriba solo corre una vez. El Promise.resolve().then() es solo
+  // para que la actualizacion de estado no quede en el cuerpo
+  // sincronico del efecto (regla react-hooks/set-state-in-effect).
+  useEffect(() => {
+    Promise.resolve().then(() => {
+      setHorariosPersonalizados((previas) => {
+        const nuevas = seleccionados.filter(
+          (hora) =>
+            !HORARIOS_BASE.includes(hora) &&
+            !previas.includes(hora)
+        );
+
+        if (nuevas.length === 0) {
+          return previas;
+        }
+
+        return [...previas, ...nuevas].sort((a, b) =>
+          a.localeCompare(b)
+        );
+      });
+    });
+  }, [seleccionados]);
 
   const horariosAMostrar = [
     ...new Set([
@@ -37,18 +80,6 @@ export default function HorarioChips({
   const handleAgregarHorario = () => {
     if (!editable) return;
     if (!nuevoHorario) return;
-
-    if (!HORARIOS_BASE.includes(nuevoHorario)) {
-      setHorariosPersonalizados((prev) => {
-        if (prev.includes(nuevoHorario)) {
-          return prev;
-        }
-
-        return [...prev, nuevoHorario].sort((a, b) =>
-          a.localeCompare(b)
-        );
-      });
-    }
 
     if (!seleccionados.includes(nuevoHorario)) {
       onAgregar(nuevoHorario);

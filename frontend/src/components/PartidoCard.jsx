@@ -26,6 +26,7 @@ export default function MatchCard({
     name,
     fieldName,
     canchaId,
+    canchaPromedioCalificacion,
     type,
     date,
     time,
@@ -86,7 +87,7 @@ export default function MatchCard({
 
                 {canchaId && (
                   <div className="mt-2">
-                    <RatingBadge canchaId={canchaId} />
+                    <RatingBadge promedio={canchaPromedioCalificacion} />
                   </div>
                 )}
               </div>

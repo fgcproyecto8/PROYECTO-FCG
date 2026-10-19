@@ -18,6 +18,8 @@ from .views import (
     eliminar_amigo,
     canchas,
     cancha_detalle,
+    horarios_cancha,
+    calificar_cancha,
     partidos,
     unirse_partido,
     abandonar_partido,
@@ -96,6 +98,16 @@ urlpatterns = [
     path(
         "canchas/<int:cancha_id>/",
         cancha_detalle
+    ),
+
+    path(
+        "canchas/<int:cancha_id>/horarios/",
+        horarios_cancha
+    ),
+
+    path(
+        "canchas/<int:cancha_id>/calificar/",
+        calificar_cancha
     ),
 
     path(
