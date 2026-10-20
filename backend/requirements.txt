@@ -2,6 +2,19 @@ asgiref==3.12.1
 Django==6.1
 django-cors-headers==4.9.0
 djangorestframework==3.18.0
+# Servidor WSGI de producción (lo usa backend/entrypoint.sh dentro del
+# contenedor Docker); el servidor de desarrollo de Django no se usa en
+# producción. No fijamos un patch exacto por la misma razón que psycopg
+# más abajo.
+gunicorn>=23.0
 pillow==12.3.0
+# Driver de PostgreSQL, requerido en producción (ver DATABASE_URL en
+# config/settings.py). No fijamos un patch exacto porque no pudimos
+# verificar cuál es el último disponible al momento de este cambio;
+# confirmar la versión instalable antes de desplegar.
+psycopg[binary]>=3.1
 sqlparse==0.6.0
 tzdata==2026.3
+# Sirve los archivos estáticos (admin, DRF) desde el propio proceso de
+# Gunicorn en producción (ver STORAGES/MIDDLEWARE en config/settings.py).
+whitenoise>=6.7
