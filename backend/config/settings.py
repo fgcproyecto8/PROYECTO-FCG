@@ -12,6 +12,9 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 
 import os
 from pathlib import Path
+from urllib.parse import parse_qs, unquote, urlsplit
+
+from django.core.exceptions import ImproperlyConfigured
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -70,13 +73,25 @@ REST_FRAMEWORK = {
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+]
+
+if not DEBUG:
+    # Sirve los archivos estaticos (admin, DRF browsable API) desde el
+    # propio proceso de Gunicorn en el contenedor del backend, sin
+    # depender de un servidor web aparte para /static/. Tiene que ir
+    # inmediatamente despues de SecurityMiddleware (lo pide WhiteNoise).
+    # Solo se activa fuera de desarrollo para no exigir tener el
+    # paquete instalado localmente: el servidor de desarrollo de
+    # Django ya sirve los estaticos sin esto.
+    MIDDLEWARE.append('whitenoise.middleware.WhiteNoiseMiddleware')
+
+MIDDLEWARE += [
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -101,13 +116,70 @@ WSGI_APPLICATION = 'config.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
+#
+# Desarrollo local: si no se define DATABASE_URL, se sigue usando el
+# mismo SQLite de siempre (ningun cambio de comportamiento local).
+#
+# Produccion: la base tiene que ser PostgreSQL, configurada entera a
+# traves de la variable de entorno DATABASE_URL (host, usuario,
+# contraseña, etc. no se adivinan ni se escriben aca). Si
+# DJANGO_DEBUG=False (es decir, se asume que es produccion) y
+# DATABASE_URL no esta definida, Django no arranca: es preferible un
+# error claro al iniciar que terminar usando SQLite en produccion sin
+# que nadie lo note en silencio.
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+def _database_from_url(url):
+    """Parsea una DATABASE_URL (postgres://usuario:contraseña@host:puerto/nombre)
+    al diccionario que espera DATABASES['default']. Se implementa a
+    mano con urllib.parse (libreria estandar) para no agregar una
+    dependencia nueva solo para esto (paquetes como dj-database-url
+    hacen basicamente lo mismo por debajo)."""
+
+    partes = urlsplit(url)
+
+    if partes.scheme not in ('postgres', 'postgresql'):
+        raise ImproperlyConfigured(
+            f"DATABASE_URL tiene un esquema no soportado: "
+            f"'{partes.scheme}'. Se espera postgres:// o postgresql://."
+        )
+
+    opciones = {}
+    sslmode = parse_qs(partes.query).get('sslmode')
+
+    if sslmode:
+        opciones['sslmode'] = sslmode[0]
+
+    return {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': unquote(partes.path.lstrip('/')),
+        'USER': unquote(partes.username) if partes.username else '',
+        'PASSWORD': unquote(partes.password) if partes.password else '',
+        'HOST': partes.hostname or '',
+        'PORT': str(partes.port) if partes.port else '',
+        'OPTIONS': opciones,
     }
-}
+
+
+DATABASE_URL = os.environ.get('DATABASE_URL', '')
+
+if DATABASE_URL:
+    DATABASES = {
+        'default': _database_from_url(DATABASE_URL)
+    }
+elif not DEBUG:
+    raise ImproperlyConfigured(
+        "DJANGO_DEBUG=False (produccion) pero no esta definida la "
+        "variable de entorno DATABASE_URL. En produccion la base de "
+        "datos tiene que ser PostgreSQL via DATABASE_URL; no se usa "
+        "SQLite como resguardo silencioso."
+    )
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 
 # Password validation
@@ -146,11 +218,50 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
+# Carpeta donde `collectstatic` junta los estaticos de todas las apps
+# (admin, DRF) para que WhiteNoise los sirva. No existe en desarrollo
+# local porque nunca se corre collectstatic ahi; solo la usa el
+# contenedor del backend en producción.
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+STORAGES = {
+    'default': {
+        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+    },
+    'staticfiles': {
+        # Igual que con el middleware: WhiteNoise solo se referencia
+        # fuera de desarrollo, para no exigirlo instalado localmente.
+        'BACKEND': (
+            'whitenoise.storage.CompressedManifestStaticFilesStorage'
+            if not DEBUG
+            else 'django.contrib.staticfiles.storage.StaticFilesStorage'
+        ),
+    },
+}
+
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "https://app6.academia.ar",
 ]
+
+# Variables de entorno opcionales para endurecer producción detrás de
+# HTTPS. No forzamos SECURE_SSL_REDIRECT ni SECURE_HSTS_SECONDS: sin
+# saber si hay un proxy de la universidad terminando TLS delante de
+# este contenedor (y si reenvía el header correcto), forzarlos podría
+# generar un loop de redirección en vez de endurecer nada. Quedan
+# como un paso pendiente a confirmar con la universidad (ver informe).
+if not DEBUG:
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+
+    CSRF_TRUSTED_ORIGINS = [
+        origin.strip()
+        for origin in os.environ.get(
+            'DJANGO_CSRF_TRUSTED_ORIGINS', ''
+        ).split(',')
+        if origin.strip()
+    ]
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
