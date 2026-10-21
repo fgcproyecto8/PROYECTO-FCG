@@ -1,7 +1,13 @@
+import json
+import tempfile
 from datetime import datetime, time, timedelta
+from io import StringIO
+from pathlib import Path
 from unittest.mock import patch
 
+from django.contrib.auth.hashers import make_password
 from django.contrib.auth.models import User
+from django.core.management import call_command
 from django.test import TestCase
 from django.utils import timezone
 
@@ -2757,3 +2763,95 @@ class NotificacionTests(TestCase):
             with self.subTest(metodo=metodo, url=url):
                 respuesta = getattr(self.client, metodo)(url)
                 self.assertEqual(respuesta.status_code, 401)
+
+
+class CrearAdministradoresTests(TestCase):
+    """Comando que crea en producción los superusuarios listados en
+    administradores.json, a partir solo del hash de la contraseña."""
+
+    def setUp(self):
+        self.carpeta = tempfile.TemporaryDirectory()
+        self.archivo = Path(self.carpeta.name) / "administradores.json"
+
+    def tearDown(self):
+        self.carpeta.cleanup()
+
+    def ejecutar(self, administradores):
+        self.archivo.write_text(
+            json.dumps({"administradores": administradores}),
+            encoding="utf-8",
+        )
+        salida, errores = StringIO(), StringIO()
+        call_command(
+            "crear_administradores",
+            archivo=str(self.archivo),
+            stdout=salida,
+            stderr=errores,
+        )
+        return salida.getvalue(), errores.getvalue()
+
+    def entrada(self, username="admin1", password="una-clave-larga-de-prueba"):
+        return {
+            "username": username,
+            "email": f"{username}@example.com",
+            "password_hash": make_password(password),
+        }
+
+    def test_crea_superusuario_que_puede_iniciar_sesion_como_administrador(self):
+        self.ejecutar([self.entrada()])
+
+        usuario = User.objects.get(username="admin1")
+        self.assertTrue(usuario.is_superuser)
+        self.assertTrue(usuario.is_staff)
+
+        respuesta = APIClient().post(
+            "/api/login/",
+            {"identificador": "admin1", "password": "una-clave-larga-de-prueba"},
+            format="json",
+        )
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.data["usuario"]["rol"], "administrador")
+
+    def test_no_pisa_la_contrasena_de_un_administrador_existente(self):
+        self.ejecutar([self.entrada()])
+        usuario = User.objects.get(username="admin1")
+        usuario.set_password("cambiada-desde-el-admin-123")
+        usuario.save()
+
+        self.ejecutar([self.entrada()])
+
+        usuario.refresh_from_db()
+        self.assertTrue(usuario.check_password("cambiada-desde-el-admin-123"))
+
+    def test_no_convierte_en_admin_a_un_jugador_con_el_mismo_nombre(self):
+        crear_jugador("Admin1")
+
+        _, errores = self.ejecutar([self.entrada()])
+
+        jugador = User.objects.get(username="Admin1")
+        self.assertFalse(jugador.is_superuser)
+        self.assertEqual(User.objects.filter(username__iexact="admin1").count(), 1)
+        self.assertIn("NO es administrador", errores)
+
+    def test_rechaza_contrasena_en_texto_plano(self):
+        entrada = self.entrada()
+        entrada["password_hash"] = "una-clave-larga-de-prueba"
+
+        _, errores = self.ejecutar([entrada])
+
+        self.assertFalse(User.objects.filter(username="admin1").exists())
+        self.assertIn("no es un hash válido", errores)
+
+    def test_json_invalido_no_rompe_el_arranque(self):
+        self.archivo.write_text("{ esto no es json", encoding="utf-8")
+        errores = StringIO()
+
+        call_command(
+            "crear_administradores",
+            archivo=str(self.archivo),
+            stdout=StringIO(),
+            stderr=errores,
+        )
+
+        self.assertIn("inválido", errores.getvalue())
+        self.assertFalse(User.objects.filter(is_superuser=True).exists())
