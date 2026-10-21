@@ -20,17 +20,41 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
-# Los tres valores de abajo se pueden sobreescribir con variables de
+# Los valores de abajo se pueden sobreescribir con variables de
 # entorno (por ejemplo en un despliegue) sin tocar este archivo. Si no
 # se define ninguna, el comportamiento es el mismo que antes: la misma
-# clave insegura de siempre, DEBUG activado y sin hosts permitidos.
-# Ver backend/.env.example.
+# clave insegura de siempre, DEBUG activado, sin hosts permitidos y
+# SQLite en backend/db.sqlite3. Ver backend/.env.example.
+
+# Carpeta persistente para la base SQLite y la clave secreta generada.
+# En el contenedor de producción apunta a un volumen de Docker (ver
+# docker-compose.yml) para que los datos sobrevivan a cada redespliegue.
+DATA_DIR = Path(os.environ.get('DJANGO_DATA_DIR', '') or BASE_DIR)
+
+
+def _clave_secreta():
+    """DJANGO_SECRET_KEY si está definida. Si no, y hay DJANGO_DATA_DIR
+    (producción), una clave aleatoria generada la primera vez y guardada
+    en ese volumen, para no versionar ninguna clave real. Si tampoco,
+    la clave de desarrollo de siempre."""
+    clave = os.environ.get('DJANGO_SECRET_KEY', '').strip()
+    if clave:
+        return clave
+
+    if os.environ.get('DJANGO_DATA_DIR'):
+        from django.core.management.utils import get_random_secret_key
+
+        archivo = DATA_DIR / 'secret_key.txt'
+        if not archivo.exists():
+            DATA_DIR.mkdir(parents=True, exist_ok=True)
+            archivo.write_text(get_random_secret_key())
+        return archivo.read_text().strip()
+
+    return 'django-insecure-8x&_x=)x4g9tjcxm450djvjygwt@zs-!ego&7s8jpi0w==g7)w'
+
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get(
-    'DJANGO_SECRET_KEY',
-    'django-insecure-8x&_x=)x4g9tjcxm450djvjygwt@zs-!ego&7s8jpi0w==g7)w',
-)
+SECRET_KEY = _clave_secreta()
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DJANGO_DEBUG', 'True') == 'True'
@@ -105,7 +129,7 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'NAME': DATA_DIR / 'db.sqlite3',
     }
 }
 
@@ -146,11 +170,33 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
+# Destino de `collectstatic` (se corre al construir la imagen Docker).
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "https://app6.academia.ar",
 ]
+
+# Orígenes con https:// aceptados por la protección CSRF (login del
+# panel /admin/ detrás del proxy HTTPS de la universidad).
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get('DJANGO_CSRF_TRUSTED_ORIGINS', '').split(',')
+    if origin.strip()
+]
+
+# En producción el HTTPS lo termina el proxy de la universidad, que le
+# pasa a Django la petición por HTTP con el header X-Forwarded-Proto.
+# Sin esto Django cree que todo es http://: las URLs de imágenes salen
+# con http:// (el navegador las bloquea en una página https://) y el
+# login del admin falla por CSRF. Solo se activa con la variable, porque
+# confiar en ese header sin un proxy delante sería inseguro.
+if os.environ.get('DJANGO_BEHIND_HTTPS_PROXY') == 'True':
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
