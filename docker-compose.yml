@@ -1,0 +1,70 @@
+version: '3.8'
+
+# Despliegue automático de la universidad (push a main -> webhook
+# https://deploy.academia.ar/hooks/app6). El proxy del servidor enruta
+# cada dominio al contenedor que lo declara en VIRTUAL_HOST (por la red
+# externa nginx-proxy) y genera el certificado HTTPS (LETSENCRYPT_HOST).
+# Por eso ningún servicio publica puertos en el host.
+#
+# Base de datos: SQLite dentro del volumen app6-data (persiste entre
+# despliegues). Las variables ${...} son opcionales: se leen de un .env
+# en el servidor si existe; si no, quedan vacías y se ignoran.
+
+services:
+  # BACKEND: Django + Gunicorn
+  backend:
+    build: ./backend
+    image: app6-partidoya-backend
+    container_name: app6-backend
+    restart: always
+    environment:
+      - VIRTUAL_HOST=api.app6.academia.ar
+      - VIRTUAL_PORT=8000
+      - LETSENCRYPT_HOST=api.app6.academia.ar
+      - LETSENCRYPT_EMAIL=admin@academia.ar
+      - DJANGO_DEBUG=False
+      - DJANGO_ALLOWED_HOSTS=api.app6.academia.ar,localhost,127.0.0.1
+      - DJANGO_CSRF_TRUSTED_ORIGINS=https://api.app6.academia.ar,https://app6.academia.ar
+      - DJANGO_BEHIND_HTTPS_PROXY=True
+      - DJANGO_DATA_DIR=/code/data
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
+      - DJANGO_SUPERUSER_USERNAME=${DJANGO_SUPERUSER_USERNAME}
+      - DJANGO_SUPERUSER_EMAIL=${DJANGO_SUPERUSER_EMAIL}
+      - DJANGO_SUPERUSER_PASSWORD=${DJANGO_SUPERUSER_PASSWORD}
+    volumes:
+      - app6-data:/code/data
+      - app6-media:/code/media
+    networks:
+      - nginx-proxy
+    deploy:
+      resources:
+        limits:
+          memory: 384m
+
+  # FRONTEND: React compilado + Nginx
+  frontend:
+    build: ./frontend
+    image: app6-partidoya-frontend
+    container_name: app6-frontend
+    restart: always
+    depends_on:
+      - backend
+    environment:
+      - VIRTUAL_HOST=app6.academia.ar
+      - VIRTUAL_PORT=80
+      - LETSENCRYPT_HOST=app6.academia.ar
+      - LETSENCRYPT_EMAIL=admin@academia.ar
+    networks:
+      - nginx-proxy
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+
+volumes:
+  app6-data:
+  app6-media:
+
+networks:
+  nginx-proxy:
+    external: true

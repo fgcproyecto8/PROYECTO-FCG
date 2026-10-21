@@ -42,3 +42,14 @@ El sistema permite a los jugadores organizar partidos, unirse a encuentros exist
 - **Frontend:** React + Vite, con Tailwind CSS para los estilos.
 - **Base de Datos:** SQLite (Desarrollo) y PostreSQL (Producción)
 - **Control de Versiones:** Git y GitHub.
+
+## Despliegue
+
+Cada `git push` a `main` dispara el webhook `https://deploy.academia.ar/hooks/app6`, que reconstruye la app con `docker-compose.yml`:
+
+- **Frontend:** https://app6.academia.ar (`frontend/Dockerfile`: build de Vite servido con Nginx).
+- **API:** https://api.app6.academia.ar (`backend/Dockerfile`: Django + Gunicorn; aplica las migraciones en cada arranque).
+- **Datos:** SQLite y las imágenes subidas viven en volúmenes de Docker (`app6-data`, `app6-media`), así que se conservan entre despliegues. La base de producción arranca vacía: no usa el `db.sqlite3` local.
+- **Variables opcionales en el servidor** (archivo `.env` junto a `docker-compose.yml`): `DJANGO_SECRET_KEY` y `DJANGO_SUPERUSER_USERNAME` / `DJANGO_SUPERUSER_EMAIL` / `DJANGO_SUPERUSER_PASSWORD` para crear el usuario del panel `/admin/`. Ver `backend/.env.example`.
+
+Para probarlo localmente: `docker network create nginx-proxy` (una sola vez) y `docker compose up --build`.
