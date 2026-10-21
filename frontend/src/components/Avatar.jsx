@@ -1,13 +1,15 @@
 import React, { useRef } from "react";
 import { Camera } from "lucide-react";
+import { prepararImagen } from "../utils/imagen.js";
 
 export default function Avatar({ src, alt, editable = false, onChangePhoto }) {
   const inputRef = useRef(null);
 
-  const handleFile = (e) => {
-    const file = e.target.files?.[0];
+  const handleFile = async (e) => {
+    const original = e.target.files?.[0];
 
-    if (file) {
+    if (original) {
+      const file = await prepararImagen(original);
       const previewUrl = URL.createObjectURL(file);
 
       onChangePhoto(file, previewUrl);

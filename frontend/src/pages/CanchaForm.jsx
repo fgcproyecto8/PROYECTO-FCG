@@ -21,6 +21,7 @@ import ImageUploader from "../components/ImageUploader";
 import HorarioChips from "../components/HorarioChips";
 
 import { getAuthUser } from "../utils/authUser";
+import { primerError } from "../utils/apiErrors.js";
 
 import {
   getCanchaDetalle,
@@ -418,7 +419,9 @@ export default function CanchaForm() {
       }
 
       setError(
-        err.message || "No se pudo guardar la cancha."
+        err.data?.imagen
+          ? primerError(err.data.imagen)
+          : err.message || "No se pudo guardar la cancha."
       );
 
       setGuardando(false);
