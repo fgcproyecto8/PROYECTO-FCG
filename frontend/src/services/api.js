@@ -24,9 +24,13 @@ async function request(endpoint, options = {}) {
   }
 
   if (!response.ok) {
+    // 413: el proxy del servidor rechazó el envío por pesar más de 1 MB
+    // (responde con HTML, no con JSON, así que no trae "mensaje").
     const error = new Error(
       data.mensaje ||
-        "Ocurrió un error al comunicarse con el servidor."
+        (response.status === 413
+          ? "La imagen es demasiado pesada. Probá con otra de menos de 1 MB."
+          : "Ocurrió un error al comunicarse con el servidor.")
     );
 
     error.status = response.status;

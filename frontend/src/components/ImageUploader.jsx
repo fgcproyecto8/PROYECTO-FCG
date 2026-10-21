@@ -1,13 +1,15 @@
 import { useRef, useState } from "react";
 import { ImagePlus } from "lucide-react";
+import { prepararImagen } from "../utils/imagen.js";
 
 export default function ImageUploader({ value, onChange }) {
   const inputRef = useRef(null);
   const [preview, setPreview] = useState(value || "");
 
-  const handleFile = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleFile = async (e) => {
+    const original = e.target.files?.[0];
+    if (!original) return;
+    const file = await prepararImagen(original);
     const url = URL.createObjectURL(file);
     setPreview(url);
     onChange(file, url);

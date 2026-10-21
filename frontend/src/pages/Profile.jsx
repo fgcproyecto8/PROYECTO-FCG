@@ -90,6 +90,9 @@ export default function Profile() {
   const [profileError, setProfileError] = useState("");
   const [miCalificacion, setMiCalificacion] = useState(0);
   const [estadoAmistad, setEstadoAmistad] = useState("ninguna");
+  // Las cuentas de administrador no tienen perfil de jugador: el backend
+  // rechaza editarlo, así que no se ofrece el botón.
+  const [esAdministrador, setEsAdministrador] = useState(false);
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -166,6 +169,11 @@ export default function Profile() {
 
         setProfile(realProfile);
         setDraft(realProfile);
+
+        setEsAdministrador(
+          esPerfilPropio &&
+          data.rol === "administrador"
+        );
 
         setMiCalificacion(
           Number(
@@ -462,6 +470,23 @@ export default function Profile() {
         setProfileError(
           primerError(error.data.fecha_nacimiento)
         );
+
+        return;
+      }
+
+      if (error.data?.foto) {
+        setProfileError(
+          primerError(error.data.foto)
+        );
+
+        return;
+      }
+
+      if (
+        error.status === 413 ||
+        error.data?.mensaje
+      ) {
+        setProfileError(error.message);
 
         return;
       }
@@ -1160,6 +1185,12 @@ export default function Profile() {
                 </button>
 
               </div>
+
+            ) : esAdministrador ? (
+
+              <p className="text-center text-sm text-slate-500 dark:text-neutral-400">
+                Las cuentas de administrador no tienen un perfil de jugador editable.
+              </p>
 
             ) : (
 
