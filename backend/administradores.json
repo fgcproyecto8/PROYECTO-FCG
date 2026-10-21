@@ -1,0 +1,22 @@
+{
+  "administradores": [
+    {
+      "username": "genaro_admin",
+      "email": "genarocomba2@gmail.com",
+      "password_hash": "pbkdf2_sha256$1500000$S7d44HibCAYcV6J7GWAMnp$0NrsxcUgigOFUQpvDvYiOBdVq0mpM3YZG268uM4hThA="
+    },
+    
+    {
+      "username": "santiago_admin",
+      "email": "santiago.flogna@gmail.com",
+      "password_hash": "pbkdf2_sha256$1500000$YkGHqZ2aP6cw6nqj9c0zL1$3ziv3X/HQOYFEzSL1KVKNYDm+JIU/CYG9VNehjknyJ4="
+    },
+
+    {
+      "username": "jeronimo_admin",
+      "email": "jeronimogalantti@gmail.com",
+      "password_hash": "pbkdf2_sha256$1500000$veaEgtcYLjwoFLaicbx3Bk$Gdk86rwHQVV7RtmAUtjZ9NjWx2fNcvIoSQjdrya4/Yc="
+    }
+  ]
+}
+

@@ -21,6 +21,8 @@ EXPOSE 8000
 
 # En cada arranque: aplica las migraciones pendientes (en una base nueva
 # crea todas las tablas; sin esto aparece "no such table: auth_user"),
-# crea el superusuario si se definieron las variables DJANGO_SUPERUSER_*
-# (si ya existe, sigue de largo) y recién después levanta Gunicorn.
-CMD ["sh", "-c", "python manage.py migrate --noinput && if [ -n \"$DJANGO_SUPERUSER_USERNAME\" ] && [ -n \"$DJANGO_SUPERUSER_PASSWORD\" ]; then python manage.py createsuperuser --noinput || true; fi && exec gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 2 --timeout 60"]
+# crea los administradores de administradores.json que falten, crea el
+# superusuario si se definieron las variables DJANGO_SUPERUSER_* (si ya
+# existe, sigue de largo) y recién después levanta Gunicorn. Un fallo al
+# crear administradores no impide que la app arranque.
+CMD ["sh", "-c", "python manage.py migrate --noinput && (python manage.py crear_administradores || true) && if [ -n \"$DJANGO_SUPERUSER_USERNAME\" ] && [ -n \"$DJANGO_SUPERUSER_PASSWORD\" ]; then python manage.py createsuperuser --noinput || true; fi && exec gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 2 --timeout 60"]

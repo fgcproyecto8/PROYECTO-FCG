@@ -53,3 +53,30 @@ Cada `git push` a `main` dispara el webhook `https://deploy.academia.ar/hooks/ap
 - **Variables opcionales en el servidor** (archivo `.env` junto a `docker-compose.yml`): `DJANGO_SECRET_KEY` y `DJANGO_SUPERUSER_USERNAME` / `DJANGO_SUPERUSER_EMAIL` / `DJANGO_SUPERUSER_PASSWORD` para crear el usuario del panel `/admin/`. Ver `backend/.env.example`.
 
 Para probarlo localmente: `docker network create nginx-proxy` (una sola vez) y `docker compose up --build`.
+
+### Administradores en producción
+
+Los superusuarios (rol administrador en la app y acceso a `/admin/`) se crean solos en cada despliegue a partir de [`backend/administradores.json`](backend/administradores.json). Como el repositorio es público, ese archivo guarda **solo el hash** de cada contraseña, nunca la contraseña.
+
+Para agregar un administrador:
+
+1. En tu computadora, desde `backend/` con el venv activado:
+   ```
+   python manage.py generar_hash_admin
+   ```
+   Pide la contraseña sin mostrarla (mínimo 16 caracteres; mejor una larga y aleatoria de un gestor de contraseñas) e imprime el hash.
+2. Agregá una entrada en `backend/administradores.json`:
+   ```json
+   {
+     "administradores": [
+       {
+         "username": "nombre_admin",
+         "email": "admin@ejemplo.com",
+         "password_hash": "pbkdf2_sha256$..."
+       }
+     ]
+   }
+   ```
+3. Commit y push a `main`. Al arrancar, el backend crea los administradores que todavía no existen.
+
+Reglas: un administrador que ya existe no se modifica (si cambiás la contraseña desde `/admin/`, el siguiente despliegue no la pisa; el hash del repo deja de servir). Si alguien ya se registró como jugador con ese nombre de usuario, **no** se lo convierte en administrador: aparece una advertencia en los logs y hay que usar otro nombre. Borrar una entrada del JSON no borra al usuario.
